@@ -4,12 +4,12 @@
     {
       "effect": "allow",
       "action": ["name/cos:GetObject", "name/cos:HeadObject", "name/cos:PutObject", "name/cos:OptionsObject"],
-      "resource": ["qcs::cos:<地域>:uid/<APPID>:<存储桶名称>/*"]
+      "resource": ["qcs::cos:ap-guangzhou:uid/1497637272:ourtrip-1497637272/*"]
     },
     {
       "effect": "allow",
       "action": ["name/cos:GetBucket"],
-      "resource": ["qcs::cos:<地域>:uid/<APPID>:<存储桶名称>/"]
+      "resource": ["qcs::cos:ap-guangzhou:uid/1497637272:ourtrip-1497637272/"]
     }
   ]
 }
