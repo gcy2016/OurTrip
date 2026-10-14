@@ -1,4 +1,4 @@
-// 固定区域：读取 data/region-map-anon.js（与 OurTrip/private/region-map-anon.js 保持一致），
+// 固定区域：读取 data/region-map-anon.js（与私有仓库 workspace-9/private/region-map-anon.js 保持一致；原名 OurTrip，两仓库已互换名称），
 // 校验后生成查询结构。不得在这里另设一套区域数据。
 
 const L1_ID = /^A\d{2}$/;
