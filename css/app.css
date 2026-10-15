@@ -8,12 +8,12 @@
   color-scheme: light;
 
   /* 颜色 */
-  --bg: #f5f7fb;
+  --bg: #e6edf8;
   --card: #ffffff;
-  --card-muted: #eef2f7;
+  --card-muted: #d7e4f8;
   --text: #1f2937;
   --text-secondary: #6b7280;
-  --line: #e3e8f0;
+  --line: #c7d6ec;
   --primary: #2f7cf6;
   --primary-strong: #1f66d9;
   --primary-text: #ffffff;
@@ -25,8 +25,8 @@
   --ok: #16a34a;
   --warn: #c2770c;
   --lit: #2f7cf6;
-  --lit-from: #dbeafe;
-  --lit-to: #ccfbf1;
+  --lit-from: #c2dbfd;
+  --lit-to: #a6efce;
 
   /* 圆角：弹窗 > 卡片 > 按钮 */
   --r-dialog: 16px;
@@ -57,9 +57,9 @@ body {
   margin: 0;
   overflow-x: hidden;
   background-color: var(--bg);
-  background-image: radial-gradient(1100px 520px at 0% -10%, rgba(47, 124, 246, 0.1), transparent 60%),
-    radial-gradient(900px 480px at 100% 0%, rgba(20, 184, 166, 0.08), transparent 60%),
-    radial-gradient(circle at 1px 1px, rgba(47, 124, 246, 0.06) 1px, transparent 0);
+  background-image: radial-gradient(1100px 520px at 0% -10%, rgba(47, 124, 246, 0.17), transparent 60%),
+    radial-gradient(900px 480px at 100% 0%, rgba(20, 184, 166, 0.13), transparent 60%),
+    radial-gradient(circle at 1px 1px, rgba(47, 124, 246, 0.1) 1px, transparent 0);
   background-size: auto, auto, 20px 20px;
   background-attachment: fixed;
   color: var(--text);
