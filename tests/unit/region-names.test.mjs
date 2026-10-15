@@ -59,7 +59,7 @@ test('地图：按名称对应到一级区域，不含九段线；只保留坐�
   assert.deepEqual(r.data.markers.sort(), ['A01', 'A02', 'A09']);
   // 显示范围只按各省计算，不为九段线留空间
   const [, y, , hgt] = r.data.viewBox;
-  assert.ok(y + hgt < 38);
+  assert.ok(y + hgt < 45);
   assert.ok(N.validMapData(r.data));
   assert.ok(!JSON.stringify(r.data).includes('script'));
 
@@ -70,4 +70,20 @@ test('地图：按名称对应到一级区域，不含九段线；只保留坐�
 
   const noDash = N.parseChinaSvg(makeFakeSvg(map).replace(/<g id="jiuduanxian">.*<\/g>/, ''), map, names);
   assert.deepEqual(noDash.problems, []);
+});
+
+test('南海诸岛：从最南端区域中分出远离主体的小岛，主图范围不再包含它们', async () => {
+  const { splitIslands } = await import('../../js/views.js');
+  const map = makeFakeMap(anon);
+  const { names } = N.computeShortNames(map);
+  const { data } = N.parseChinaSvg(makeFakeSvg(map), map, names);
+  const r = splitIslands(data.regions);
+  assert.equal(r.islandsOf, 'A21');
+  assert.equal(r.islands.length, 2);
+  const main = N.pathBBox(Object.values(r.regions).join(' '));
+  assert.ok(main.y + main.h <= 36);
+  assert.ok(N.pathBBox(r.regions.A21).h <= 5);
+  // 没有远离主体的小岛时原样返回
+  const plain = { A01: 'M0,0L1,0L1,1Z', A02: 'M2,2L3,2L3,3Z M3,3L3.2,3L3.2,3.1Z' };
+  assert.deepEqual(splitIslands(plain).islands, []);
 });

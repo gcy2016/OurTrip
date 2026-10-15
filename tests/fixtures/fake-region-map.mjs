@@ -57,7 +57,7 @@ export async function encryptMap(map, password = FAKE_PASSWORD, iterations = 100
   };
 }
 
-/** 虚构地图：每个一级区域一个方块（6×6 网格），港澳两个很小的方块，另有一段九段线 */
+/** 虚构地图：每个一级区域一个方块（6×6 网格），港澳两个很小的方块，A21 带两个远处小岛，另有一段九段线 */
 export function makeFakeSvg(map, { evil = false } = {}) {
   const tiny = { A01: [20, 33], A02: [19.4, 33.2] };
   const paths = map.level1.map((l1, i) => {
@@ -67,7 +67,9 @@ export function makeFakeSvg(map, { evil = false } = {}) {
     }
     const x = (i % 6) * 8;
     const y = Math.floor(i / 6) * 6;
-    return `<path id="p${i}" data-name="${l1.name}" d="M${x},${y}L${x + 7},${y}L${x + 7},${y + 5}L${x},${y + 5}Z"/>`;
+    // A21 带两个远在南边的小岛（模拟南海诸岛）
+    const isles = l1.id === 'A21' ? 'M17,40L17.3,40L17.3,40.3Z M19,43L19.3,43L19.3,43.3Z' : '';
+    return `<path id="p${i}" data-name="${l1.name}" d="M${x},${y}L${x + 7},${y}L${x + 7},${y + 5}L${x},${y + 5}Z ${isles}"/>`;
   });
   if (evil) paths.push('<path data-name="坏" d="M0,0" onclick="alert(1)"/><script>alert(1)</script>');
   return `<?xml version="1.0" encoding="UTF-8"?>

@@ -718,7 +718,8 @@ try {
     await A.click('.entry-btn:has-text("地图")');
     await A.waitForSelector('svg.china-map path.prov');
     assert.equal(await A.locator('svg.china-map path.prov').count(), 34);
-    assert.equal(await A.locator('svg.china-map .dashes, svg.china-map .marker, svg.china-map text, svg.china-map line').count(), 0);
+    assert.equal(await A.locator('svg.china-map .dashes, svg.china-map .marker, svg.china-map line').count(), 0);
+    assert.deepEqual(await A.$$eval('svg.china-map text', (els) => els.map((e) => e.textContent)), ['南海诸岛']); // 不显示省名
     assert.equal(await A.locator('svg.china-map .dots .dot').count(), 2);
     assert.equal(await A.evaluate(() => getComputedStyle(document.querySelector('.map-stage')).transform), 'none'); // 横屏不旋转
     const litL1 = await A.evaluate(() => window.__app.regions.level1.filter((id) => window.__app.lit.has(id)).sort());
@@ -727,7 +728,18 @@ try {
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零三")');
     assert.equal(await A.textContent('.map-info'), '虚零三　2023.05.01 点亮');
-    // 台湾：普通区域，直接点击
+    // 南海诸岛：台湾右侧小框，点击显示所属区域
+    assert.equal(await A.locator('svg.china-map .inset .isle').count(), 2);
+    const bb = (e) => {
+      const b = e.getBBox();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    };
+    const inset = await A.$eval('svg.china-map .inset .frame', bb);
+    const tw = await A.$eval('svg.china-map path.prov[data-id="A09"]', bb);
+    assert.ok(inset.x >= tw.x + tw.width, `小框在台湾右侧 ${JSON.stringify([inset, tw])}`);
+    await A.click('svg.china-map .inset .frame', { force: true });
+    await A.waitForSelector('.map-info:has-text("虚二一")');
+        // 台湾：普通区域，直接点击
     await A.click('svg.china-map path.prov[data-id="A09"]', { force: true });
     await A.waitForSelector('.map-info:has-text("台湾")');
     assert.equal(await A.textContent('.map-info'), '台湾　未点亮');

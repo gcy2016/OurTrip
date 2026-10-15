@@ -1368,6 +1368,40 @@ textarea.input {
   stroke-width: 0.3;
 }
 
+/* 南海诸岛小框（台湾右侧），亮暗跟随所属区域 */
+.china-map .inset {
+  cursor: pointer;
+  outline: none;
+}
+
+.china-map .inset .frame {
+  fill: rgba(255, 255, 255, 0.55);
+  stroke: #9aa9bf;
+  stroke-width: 0.06;
+}
+
+.china-map .inset.sel .frame {
+  stroke: var(--primary-strong);
+  stroke-width: 0.15;
+}
+
+.china-map .inset .isle {
+  fill: #8a9ab3;
+  stroke: #8a9ab3;
+  stroke-width: 1.2px;
+  vector-effect: non-scaling-stroke;
+}
+
+.china-map .inset.lit .isle {
+  fill: #2fbf7f;
+  stroke: #2fbf7f;
+}
+
+.china-map .inset text {
+  fill: var(--text-secondary);
+  pointer-events: none;
+}
+
 /* 港澳：原位置两个小点，点亮后发亮；外圈为共同的点击热区 */
 .china-map .dots {
   cursor: pointer;

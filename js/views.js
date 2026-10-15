@@ -64,9 +64,44 @@ function smallRegions(data, vw) {
   });
 }
 
+function boxGap(a, b) {
+  return Math.max(b.x - (a.x + a.w), a.x - (b.x + b.w), b.y - (a.y + a.h), a.y - (b.y + b.h), 0);
+}
+
+/**
+ * 南海诸岛：最南端区域的路径里，远离该区域主体（面积最大的一块）的小岛。
+ * 从主图中拿出来，放进台湾右侧的小框，主图显示范围只按大陆与近岸岛屿计算。依据形状判断，不依赖名称。
+ */
+export function splitIslands(regions) {
+  let south = null;
+  let maxY = -Infinity;
+  for (const [id, d] of Object.entries(regions)) {
+    const b = pathBBox(d);
+    if (b.y + b.h > maxY) {
+      maxY = b.y + b.h;
+      south = id;
+    }
+  }
+  const subs = (regions[south] || '').match(/M[^M]*/g) || [];
+  if (subs.length < 2) return { regions, islandsOf: null, islands: [] };
+  const area = (sp) => {
+    const b = pathBBox(sp);
+    return b.w * b.h;
+  };
+  const main = subs.reduce((a, b) => (area(b) > area(a) ? b : a));
+  const mb = pathBBox(main);
+  const all = pathBBox(Object.values(regions).join(' '));
+  const tol = all.w * 0.01;
+  const islands = subs.filter((sp) => sp !== main && boxGap(pathBBox(sp), mb) > tol);
+  if (!islands.length) return { regions, islandsOf: null, islands: [] };
+  const rest = subs.filter((sp) => !islands.includes(sp)).join('');
+  return { regions: { ...regions, [south]: rest }, islandsOf: south, islands };
+}
+
 function drawMap(app, data) {
-  // 显示范围只按各省边界计算（不含九段线），尽量放大地图主体
-  const box = pathBBox(Object.values(data.regions).join(' '));
+  // 显示范围只按各省边界计算（不含九段线；南海诸岛另放小框），尽量放大地图主体
+  const { regions, islandsOf, islands } = splitIslands(data.regions);
+  const box = pathBBox(Object.values(regions).join(' '));
   const pad = Math.max(box.w, box.h) * 0.015;
   const vx = box.x - pad;
   const vy = box.y - pad;
@@ -84,7 +119,7 @@ function drawMap(app, data) {
   };
   const g = svg('g', { class: 'provinces' });
   // 选中的区域最后画，描边不会被相邻区域盖住
-  const entries = Object.entries(data.regions).sort((x, y) => (x[0] === selected) - (y[0] === selected));
+  const entries = Object.entries(regions).sort((x, y) => (x[0] === selected) - (y[0] === selected));
   for (const [id, d] of entries) {
     const dot = dots.includes(id);
     const p = svg('path', {
@@ -100,10 +135,39 @@ function drawMap(app, data) {
   }
   root.appendChild(g);
 
+  if (islands.length) {
+    // 南海诸岛小框：放在台湾右侧到地图右边界之间的海面上，不占用大陆的显示空间
+    const big = (data.markers || []).filter((id) => regions[id] && !dots.includes(id)).map((id) => pathBBox(regions[id]));
+    const ib = pathBBox(islands.join(' '));
+    const gap = vw * 0.02;
+    const right = box.x + box.w;
+    const bottom = box.y + box.h;
+    const left = big.length ? Math.max(...big.map((b) => b.x + b.w)) + gap : right - vw * 0.14;
+    const top = big.length ? Math.min(...big.map((b) => b.y)) : bottom - vh * 0.3;
+    const fw = right - left;
+    const fh = bottom - top;
+    const k = Math.min((fw * 0.86) / ib.w, (fh * 0.8) / ib.h);
+    const fwUsed = ib.w * k / 0.86;
+    const fhUsed = ib.h * k / 0.8;
+    const fx = right - fwUsed;
+    const fy = bottom - fhUsed;
+    const lit = app.lit.has(islandsOf);
+    const inset = svg('g', { class: `inset${lit ? ' lit' : ''}${selected === islandsOf ? ' sel' : ''}`, 'data-id': islandsOf, tabindex: 0, role: 'button', 'aria-label': '南海诸岛' });
+    inset.appendChild(svg('rect', { class: 'frame', x: fx, y: fy, width: fwUsed, height: fhUsed, rx: vw * 0.004 }));
+    const tx = fx + (fwUsed - ib.w * k) / 2 - ib.x * k;
+    const ty = fy + fhUsed - ib.h * k - fhUsed * 0.06 - ib.y * k;
+    const ig = svg('g', { transform: `translate(${tx} ${ty}) scale(${k})` });
+    for (const sp of islands) ig.appendChild(svg('path', { d: sp, class: 'isle' }));
+    inset.appendChild(ig);
+    inset.appendChild(svg('text', { x: fx + fwUsed / 2, y: fy + fhUsed * 0.11, 'font-size': fhUsed * 0.07, 'text-anchor': 'middle' }, '南海诸岛'));
+    bind(inset, islandsOf);
+    root.appendChild(inset);
+  }
+
   if (dots.length) {
     // 港澳：原位置两个小点，点亮后发亮；两点附近一个共同的点击热区
     const pts = dots.map((id) => {
-      const b = pathBBox(data.regions[id]);
+      const b = pathBBox(regions[id]);
       return { id, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
     });
     const cx = pts.reduce((t, p) => t + p.cx, 0) / pts.length;
