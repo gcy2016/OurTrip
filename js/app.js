@@ -763,7 +763,7 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
   const bg = h('div', { class: 'tile-bg', style: { background: color } });
   const img = backgroundImage(bgSpec);
   if (img) bg.appendChild(img);
-  const cls = ['tile', region ? 'region' : '', lit === false ? 'unlit' : '', lit ? 'lit' : '', selected ? 'selected' : '', img ? 'has-photo' : '', !img && isDark(color) ? 'on-dark' : '']
+  const cls = ['tile', region ? `region ${region}` : '', lit === false ? 'unlit' : '', lit ? 'lit' : '', selected ? 'selected' : '', img ? 'has-photo' : '', !img && isDark(color) ? 'on-dark' : '']
     .filter(Boolean)
     .join(' ');
   return h(
@@ -804,7 +804,7 @@ function regionTile(id, { href } = {}) {
     sub2: date ? `${date.replace(/-/g, '.')} 点亮` : '',
     color: COLORS.region,
     bg,
-    region: true,
+    region: r.level === 1 ? 'l1' : 'l2',
     lit: app.lit.has(id),
   });
 }

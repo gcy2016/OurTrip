@@ -39,6 +39,16 @@
   --shadow-card-hover: 0 14px 32px rgba(47, 124, 246, 0.14), 0 4px 12px rgba(15, 23, 42, 0.08);
   --shadow-pop: 0 24px 60px rgba(15, 23, 42, 0.18), 0 4px 14px rgba(15, 23, 42, 0.08);
 
+  /* 区域名称字号（由 Muse 调整）：
+     --name-l1-max / --name-l2-max：一级（省）/ 二级（市）名称的最大字号，cqh = 方框高度的 1%，25cqh 即 1/4；
+     --name-fit：名称较长时的缩小系数，越大字越小（名称都要能放进方框宽度）；
+     --name-weight：字重（400 常规，700 粗体）；--name-lines：最多显示几行。 */
+  --name-l1-max: 25cqh;
+  --name-l2-max: 25cqh;
+  --name-fit: 1.1;
+  --name-weight: 700;
+  --name-lines: 2;
+
   /* 间距 */
   --gap: 16px;
   --gap-mobile: 12px;
@@ -1165,6 +1175,7 @@ textarea.input {
 
 /* =========================================================================
    区域名称大字号：最大为方框高度的 1/4，名称越长字越小，最多两行
+   字号在 :root 的 --name-* 变量里调整，这里一般不用改
    ========================================================================= */
 
 .tile.region {
@@ -1172,16 +1183,21 @@ textarea.input {
 }
 
 .tile.region .tile-title {
-  font-size: min(25cqh, calc((100cqw - 28px) / (var(--name-w, 2) * 1.1)));
+  --name-max: var(--name-l2-max);
+  font-size: min(var(--name-max), calc((100cqw - 28px) / (var(--name-w, 2) * var(--name-fit))));
   line-height: 1.12;
-  font-weight: 700;
+  font-weight: var(--name-weight);
   letter-spacing: 0.02em;
   white-space: normal;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: var(--name-lines);
   overflow: hidden;
   word-break: break-all;
+}
+
+.tile.region.l1 .tile-title {
+  --name-max: var(--name-l1-max);
 }
 
 .tile.region .tile-sub {
