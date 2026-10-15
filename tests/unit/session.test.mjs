@@ -59,3 +59,20 @@ test('同一设备刷新页面后可直接收回自己的锁', async () => {
   assert.equal((await reloaded.acquire()).ok, true);
   assert.equal(await old.verify(), false);
 });
+
+test('在线统计不依赖“列出文件”；登记表被覆盖后心跳会补登', async () => {
+  const s = new MemoryStore();
+  s.list = async () => {
+    throw new Error('不应调用 list');
+  };
+  const a = dev(s, 'a'), b = dev(s, 'b');
+  await a.join();
+  await b.join();
+  // 模拟并发登记互相覆盖：登记表里只剩 b
+  await s.putJSON('meta/devices.json', { devices: { b: { name: 'b', registeredAt: s.now() } } });
+  assert.equal((await b.othersOnline()).length, 0);
+  for (let i = 0; i < 4; i++) await a.heartbeat();
+  assert.equal((await b.othersOnline()).length, 1);
+  const c = dev(s, 'c');
+  assert.equal((await c.join()).ok, false);
+});
