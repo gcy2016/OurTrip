@@ -2,7 +2,9 @@
 // bucket / region：在腾讯云控制台 → 对象存储 → 存储桶列表中查看。
 // encryptedCredentials：用 tools/encrypt.html 生成的密文（一段 JSON），整段粘贴到这里。
 // 三项都填好之前，网页会提示“尚未配置云端存储”，可以先进入演示模式体验。
+// tencentMapKey：腾讯位置服务 Key（用于把定位坐标转成中文地址；需在控制台设置域名白名单），留空则不启用。
 export const CONFIG = {
+  tencentMapKey: '',
   bucket: 'ourtrip-1497637272',
   region: 'ap-guangzhou',
   encryptedCredentials: {

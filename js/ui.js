@@ -54,13 +54,14 @@ const openDialogs = [];
  * 打开对话框。build(close) 返回内容元素；close(value) 关闭并 resolve。
  * 点击遮罩或按 Esc 视为取消（resolve undefined）。
  */
-export function dialog(build, { title = '', wide = false, dismissable = true } = {}) {
+export function dialog(build, { title = '', wide = false, dismissable = true, onClose = null } = {}) {
   return new Promise((resolve) => {
     const prevFocus = document.activeElement;
     let done = false;
     const close = (value) => {
       if (done) return;
       done = true;
+      if (onClose) onClose(value);
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
       openDialogs.splice(openDialogs.indexOf(overlay), 1);

@@ -13,7 +13,7 @@ import { h, clear, toast, confirmDialog, alertDialog, actionSheet, promptDialog,
 import { openUploader, thumbKey } from './upload.js';
 import { openViewer } from './viewer.js';
 import * as B from './boxes.js';
-import { mapLinks, formatCoords, copyText } from './maps.js';
+import { appleMapsUrl, formatCoords, copyText, hasCoords } from './maps.js';
 
 const DEMO_PASSWORD = 'demo1234';
 const POLL_EVERY = 20000;
@@ -85,10 +85,29 @@ const authDb = {
     });
   },
   get: (k) => authDb.run('readonly', (s) => s.get(k)).catch(() => null),
+  keys: () => authDb.run('readonly', (s) => s.getAllKeys()).catch(() => []),
   set: (k, v) => authDb.run('readwrite', (s) => s.put(v, k)).catch(() => null),
   del: (k) => authDb.run('readwrite', (s) => s.delete(k)).catch(() => null),
 };
 const AUTH_KEY = demo ? 'auth-demo' : 'auth';
+// 未勾选“记住此设备”时，只在当前标签页内免密：刷新页面不用重新输入密码，关闭标签页后失效
+const TAB_AUTH_KEY = `${AUTH_KEY}-tab`;
+const SS_TAB = 'travel-album-tab-auth';
+function ssGet(k) {
+  try {
+    return sessionStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+function ssSet(k, v) {
+  try {
+    if (v === null) sessionStorage.removeItem(k);
+    else sessionStorage.setItem(k, v);
+  } catch {
+    /* 忽略 */
+  }
+}
 
 // ---------- 程序状态 ----------
 
@@ -103,6 +122,7 @@ const app = {
   lock: { state: 'free' },
   selecting: false,
   selected: new Set(),
+  photoShown: new Map(),
   timers: [],
   credBlob: null,
   get editing() {
@@ -185,13 +205,17 @@ async function boot() {
   else if (configured) app.credBlob = CONFIG.encryptedCredentials;
   parseRoute();
   if (app.credBlob) {
-    const saved = await authDb.get(AUTH_KEY);
-    if (saved && saved.key && saved.fp === (await blobFingerprint(app.credBlob))) {
+    const fp = await blobFingerprint(app.credBlob);
+    const tab = ssGet(SS_TAB);
+    const candidates = [[AUTH_KEY, await authDb.get(AUTH_KEY)]];
+    if (tab) candidates.push([`${TAB_AUTH_KEY}:${tab}`, await authDb.get(`${TAB_AUTH_KEY}:${tab}`)]);
+    for (const [k, saved] of candidates) {
+      if (!saved || !saved.key || saved.fp !== fp) continue;
       try {
         const secret = await decryptWithKey(app.credBlob, saved.key);
         return startSession(secret);
       } catch {
-        await authDb.del(AUTH_KEY);
+        await authDb.del(k);
       }
     }
   }
@@ -201,8 +225,20 @@ async function boot() {
 
 async function login(password, remember) {
   const { secret, key } = await decryptSecret(app.credBlob, password);
-  if (remember) await authDb.set(AUTH_KEY, { fp: await blobFingerprint(app.credBlob), key });
-  else await authDb.del(AUTH_KEY);
+  const fp = await blobFingerprint(app.credBlob);
+  if (remember) await authDb.set(AUTH_KEY, { fp, key });
+  else {
+    await authDb.del(AUTH_KEY);
+    const tab = `${Date.now().toString(36)}${Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+    // 清理一天前的标签页记录（标签页早已关闭，记录已无用）
+    for (const k of await authDb.keys()) {
+      if (typeof k !== 'string' || !k.startsWith(`${TAB_AUTH_KEY}:`)) continue;
+      const rec = await authDb.get(k);
+      if (!rec || !rec.at || Date.now() - rec.at > 86400000) await authDb.del(k);
+    }
+    await authDb.set(`${TAB_AUTH_KEY}:${tab}`, { fp, key, at: Date.now() });
+    ssSet(SS_TAB, tab);
+  }
   await startSession(secret);
 }
 
@@ -336,6 +372,9 @@ async function logout() {
     /* 忽略 */
   }
   await authDb.del(AUTH_KEY);
+  const tab = ssGet(SS_TAB);
+  if (tab) await authDb.del(`${TAB_AUTH_KEY}:${tab}`);
+  ssSet(SS_TAB, null);
   app.session = null;
   app.sync = null;
   app.store = null;
@@ -612,10 +651,24 @@ function lazyImage(key, alt = '') {
   return img;
 }
 
-function tile({ href, title, sub, color, imgKey, imgSrc, lit, badge, extra, onclick, selected }) {
+/** 背景图：bg 为 {kind:'photo'|'image', ..., fallback}；图片加载失败时依次回退，最后露出纯色 */
+function backgroundImage(spec) {
+  if (!spec) return null;
+  const img = h('img', { alt: '', loading: 'lazy', decoding: 'async' });
+  const load = (s) => {
+    if (!s) return img.remove();
+    img.onerror = () => load(s.fallback);
+    if (s.kind === 'image') img.src = s.src;
+    else app.imageUrl(thumbKey(s.photoId)).then((u) => (u ? (img.src = u) : load(s.fallback))).catch(() => load(s.fallback));
+  };
+  load(spec);
+  return img;
+}
+
+function tile({ href, title, sub, color, bg: bgSpec, lit, badge, extra, onclick, selected }) {
   const bg = h('div', { class: 'tile-bg', style: { background: color } });
-  if (imgKey) bg.appendChild(lazyImage(imgKey));
-  else if (imgSrc) bg.appendChild(h('img', { src: imgSrc, alt: '', loading: 'lazy' }));
+  const img = backgroundImage(bgSpec);
+  if (img) bg.appendChild(img);
   return h(
     'a',
     {
@@ -634,8 +687,7 @@ function tile({ href, title, sub, color, imgKey, imgSrc, lit, badge, extra, oncl
 function regionTile(id) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
-  const cover = A.resolveCover(album, app.regions, id);
-  const disp = REGION_DISPLAY[id] || {};
+  const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id]);
   let sub = '';
   if (r.children.length) {
     const litKids = r.children.filter((c) => app.lit.has(c)).length;
@@ -646,8 +698,7 @@ function regionTile(id) {
     title: app.regionName(id),
     sub,
     color: COLORS.region,
-    imgKey: cover ? thumbKey(cover) : null,
-    imgSrc: !cover && disp.image ? disp.image : null,
+    bg,
     lit: app.lit.has(id),
   });
 }
@@ -681,8 +732,8 @@ function level1View(id) {
 }
 
 function regionCoverTools(id) {
-  if (!app.editing || !app.sync.album.regionCovers[id]) return null;
-  return h('button', { class: 'btn btn-small', onclick: () => app.mutate((a) => A.clearCover(a, id)) }, '清除区域封面');
+  if (!app.editing || !A.hasUserCover(app.sync.album, id)) return null;
+  return h('button', { class: 'btn btn-small', onclick: () => app.mutate((a) => A.clearCover(a, id)) }, '清除我设置的封面');
 }
 
 function boxTile(node) {
@@ -722,8 +773,8 @@ function boxTile(node) {
     title: node.title,
     sub,
     color: /^#[0-9a-fA-F]{6}$/.test(node.color || '') ? node.color : COLORS.box,
-    imgKey: cover ? thumbKey(cover) : null,
-    badge: node.type || null,
+    bg: cover ? { kind: 'photo', photoId: cover } : null,
+    badge: A.isAlbumBox(node) ? '相册框' : node.type || null,
     extra,
     selected: selecting && app.selected.has(node.id),
     onclick: selecting
@@ -756,7 +807,8 @@ function containerView(id) {
 
   const section = h('section', null, head);
 
-  if (app.editing) section.appendChild(toolbar(id, kids, content, canKids));
+  const albumBox = isBox && A.isAlbumBox(node);
+  if (app.editing && !albumBox) section.appendChild(toolbar(id, kids, content, canKids));
 
   if (kids.length) {
     section.appendChild(h('div', { class: 'grid' }, kids.map(boxTile)));
@@ -764,6 +816,12 @@ function containerView(id) {
     section.appendChild(
       h('div', { class: 'empty' }, app.editing ? '点“新建框”开始记录，例如按日期或行程建一个框，再在里面放相册、美食、景点、餐厅。' : '这里还没有内容。')
     );
+  }
+
+  if (albumBox) {
+    if (!content && !app.editing) section.appendChild(h('div', { class: 'empty' }, '这个相册还没有照片。'));
+    else section.appendChild(contentView(node, { photosOnly: true }));
+    return section;
   }
 
   if (isBox && !kids.length) {
@@ -836,7 +894,9 @@ function toolbar(id, kids, content, canKids) {
   );
 }
 
-function contentView(node) {
+const PHOTO_PAGE = 60;
+
+function contentView(node, { photosOnly = false } = {}) {
   const editing = app.editing;
   const wrap = h('div', { class: 'content' });
 
@@ -853,11 +913,13 @@ function contentView(node) {
   }
   wrap.appendChild(photoHead);
   if (node.photos.length) {
+    // 照片很多时分批显示，避免页面过长、一次加载过多缩略图
+    const shown = Math.min(node.photos.length, app.photoShown.get(node.id) || PHOTO_PAGE);
     wrap.appendChild(
       h(
         'div',
         { class: 'photo-grid' },
-        node.photos.map((pid, i) =>
+        node.photos.slice(0, shown).map((pid, i) =>
           h(
             'button',
             { class: 'photo', 'aria-label': `查看第 ${i + 1} 张`, onclick: () => openViewer(app, node.photos.slice(), i) },
@@ -867,9 +929,25 @@ function contentView(node) {
         )
       )
     );
+    if (shown < node.photos.length) {
+      wrap.appendChild(
+        h(
+          'button',
+          {
+            class: 'btn btn-block more-btn',
+            onclick: () => {
+              app.photoShown.set(node.id, shown + PHOTO_PAGE);
+              app.render();
+            },
+          },
+          `再显示 ${Math.min(PHOTO_PAGE, node.photos.length - shown)} 张（已显示 ${shown} / ${node.photos.length}）`
+        )
+      );
+    }
   } else {
     wrap.appendChild(h('p', { class: 'muted' }, editing ? '单批最多 50 张，上传前会自动压缩；首版不支持视频。' : '暂无照片'));
   }
+  if (photosOnly) return wrap;
 
   // 备注
   wrap.appendChild(
@@ -905,17 +983,17 @@ function contentView(node) {
   );
   const loc = node.location;
   if (A.hasLocation(loc)) {
-    const links = mapLinks(loc, node.title);
+    const apple = appleMapsUrl(loc, node.title);
     wrap.appendChild(
       h(
         'div',
         { class: 'location' },
         loc.address ? h('p', { class: 'note' }, loc.address) : null,
-        Number.isFinite(loc.lat) ? h('p', { class: 'muted' }, `坐标：${formatCoords(loc)}`) : null,
+        hasCoords(loc) ? h('p', { class: 'muted' }, `坐标：${formatCoords(loc)}`) : null,
         h(
           'div',
           { class: 'map-links' },
-          links.map((l) => h('a', { class: 'btn btn-small', href: l.href, target: '_blank', rel: 'noopener noreferrer' }, l.label)),
+          apple ? h('a', { class: 'btn btn-small btn-primary', href: apple, target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中打开') : null,
           copyText(loc)
             ? h(
                 'button',
@@ -927,7 +1005,7 @@ function contentView(node) {
               )
             : null
         ),
-        h('p', { class: 'dialog-hint' }, '如果点击后没有打开地图 App，会进入对应的网页地图；也可以复制地址或坐标到地图里搜索。')
+        h('p', { class: 'dialog-hint' }, '地图会在新页面打开，相册页面保持不变。建议用 Safari 打开相册，点按后可直接跳转到 Apple 地图 App。')
       )
     );
   } else {

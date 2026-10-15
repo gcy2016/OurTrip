@@ -223,3 +223,57 @@ test('normalizeAlbum 能处理空数据和缺字段', () => {
   assert.equal(A.hasContent(a.nodes.b1), false);
   assert.deepEqual(A.normalizeAlbum(null).trash, []);
 });
+
+test('相册框：名称固定、只能放照片、不能有子框，复制模板保留种类', () => {
+  const a = A.emptyAlbum();
+  const al = A.addBox(a, R, 'A03-C01', { kind: 'album', title: '随便' });
+  assert.equal(al.title, '相册');
+  assert.equal(A.isAlbumBox(al), true);
+  assert.throws(() => A.updateBox(a, al.id, { title: '改名' }), { code: 'ALBUM_FIXED' });
+  assert.throws(() => A.setNote(a, al.id, 'x'), { code: 'ALBUM_ONLY_PHOTOS' });
+  assert.throws(() => A.setLocation(a, al.id, { address: 'x' }), { code: 'ALBUM_ONLY_PHOTOS' });
+  assert.throws(() => A.addBox(a, R, al.id), { code: 'ALBUM_NO_CHILDREN' });
+  assert.equal(A.canHoldChildren(a, R, al.id), false);
+  A.addPhotos(a, al.id, [photo('p1')]);
+  assert.ok(A.computeLit(a, R).has('A03-C01'));
+  A.updateBox(a, al.id, { color: '#123456' });
+  const trip = A.mergeBoxes(a, [al.id], '第一次');
+  const pasted = A.pasteTemplate(a, R, A.copyTemplate(a, trip.id), 'A01');
+  const kid = A.childNodes(a, pasted)[0];
+  assert.equal(A.isAlbumBox(kid), true);
+  assert.equal(kid.photos.length, 0);
+  const other = A.addBox(a, R, 'A01', { title: 'x' });
+  assert.throws(() => A.moveBox(a, R, other.id, kid.id), { code: 'ALBUM_NO_CHILDREN' });
+  assert.deepEqual(A.validateAlbum(a, R), []);
+});
+
+test('区域背景：用户照片与仓库图片谁后设置谁生效，失效时互相顶替，都没有时为 null', () => {
+  const a = A.emptyAlbum();
+  const b = A.addBox(a, R, 'A03-C01');
+  A.addPhotos(a, b.id, [photo('p1')]);
+  const at = (s) => Date.parse(s.replace(' ', 'T'));
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', {}), null);
+  // 只有仓库图片
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03', { image: 'x.jpg' }), { kind: 'image', src: 'x.jpg', fallback: null });
+  // 用户之后选了照片 → 用户生效，仓库图片作为后备
+  A.setCover(a, R, 'A03', 'p1', at('2026-10-16 10:00'));
+  let r = A.resolveRegionBackground(a, R, 'A03', { image: 'x.jpg', imageUpdatedAt: '2026-10-15 10:00' });
+  assert.equal(r.kind, 'photo');
+  assert.equal(r.fallback.src, 'x.jpg');
+  // 维护者之后更新了仓库图片 → 仓库图片生效
+  r = A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg', imageUpdatedAt: '2026-10-17 10:00' });
+  assert.equal(r.kind, 'image');
+  assert.equal(r.fallback.photoId, 'p1');
+  // 用户再次设置 → 又由用户生效
+  A.setCover(a, R, 'A03', 'p1', at('2026-10-18 10:00'));
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg', imageUpdatedAt: '2026-10-17 10:00' }).kind, 'photo');
+  // 用户照片失效 → 回到仓库图片；仓库也没有 → null（纯色）
+  A.deletePhoto(a, 'p1');
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg' }).kind, 'image');
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', {}), null);
+  // 旧数据（字符串形式的封面）仍可读取
+  A.addPhotos(a, b.id, [photo('p2')]);
+  a.regionCovers['A03-C01'] = 'p2';
+  assert.equal(A.resolveCover(a, R, 'A03-C01'), 'p2');
+  assert.equal(A.hasUserCover(a, 'A03-C01'), true);
+});

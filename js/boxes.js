@@ -4,11 +4,12 @@ import { h, dialog, buttons, actionSheet, promptDialog, confirmDialog, alertDial
 import * as A from './album.js';
 import { isRegionId, isContentRegion } from './regions.js';
 import { BOX_PALETTE } from './region-display.js';
-import { formatCoords } from './maps.js';
+import { formatCoords, hasCoords } from './maps.js';
+import { geocodeAvailable, reverseGeocode } from './geocode.js';
 
 export function newBoxDialog(app, parentId) {
   if (!A.canHoldChildren(app.sync.album, app.regions, parentId)) {
-    // 有内容的末级框：按约定提示用户先合并
+    // 有内容的末级框 / 相册框：按约定给出提示
     try {
       A.addBox(app.sync.album, app.regions, parentId);
     } catch (e) {
@@ -18,7 +19,8 @@ export function newBoxDialog(app, parentId) {
   return dialog(
     (close) => {
       let type = '';
-      const input = h('input', { class: 'input', type: 'text', placeholder: '标题，例如 2024 五一 / 相册 / 某家小店', autofocus: true });
+      let kind = 'normal';
+      const input = h('input', { class: 'input', type: 'text', placeholder: '标题，例如 2024 五一 / 某家小店', autofocus: true });
       const chips = h(
         'div',
         { class: 'chips' },
@@ -39,17 +41,49 @@ export function newBoxDialog(app, parentId) {
           )
         )
       );
+      const normalPart = h('div', null, input, h('p', { class: 'dialog-hint' }, '快捷类型（可选，不限制框里放什么）：'), chips);
+      const albumPart = h('p', { class: 'dialog-hint', hidden: true }, '相册框名称固定为“相册”，只能放照片，不能添加子框、备注或地点。照片很多时，单独放进相册框，其他内容就不会被挤到很下面。');
+      const kindBtns = h(
+        'div',
+        { class: 'segmented', role: 'radiogroup', 'aria-label': '框的种类' },
+        [
+          ['normal', '普通框'],
+          ['album', '相册框（只放照片）'],
+        ].map(([k, label]) =>
+          h(
+            'button',
+            {
+              type: 'button',
+              class: `seg${k === kind ? ' on' : ''}`,
+              role: 'radio',
+              'aria-checked': String(k === kind),
+              dataset: { kind: k },
+              onclick: () => {
+                kind = k;
+                for (const b of kindBtns.children) {
+                  b.classList.toggle('on', b.dataset.kind === kind);
+                  b.setAttribute('aria-checked', String(b.dataset.kind === kind));
+                }
+                normalPart.hidden = kind === 'album';
+                albumPart.hidden = kind !== 'album';
+              },
+            },
+            label
+          )
+        )
+      );
       const submit = () => {
-        const r = app.mutate((a) => A.addBox(a, app.regions, parentId, { title: input.value || type, type }));
+        const opts = kind === 'album' ? { kind: 'album' } : { title: input.value || type, type };
+        const r = app.mutate((a) => A.addBox(a, app.regions, parentId, opts));
         if (r) close(r.value);
       };
       input.addEventListener('keydown', (e) => e.key === 'Enter' && submit());
       return h(
         'div',
         null,
-        input,
-        h('p', { class: 'dialog-hint' }, '快捷类型（可选，不限制框里放什么）：'),
-        chips,
+        kindBtns,
+        normalPart,
+        albumPart,
         buttons(h('button', { class: 'btn', onclick: () => close() }, '取消'), h('button', { class: 'btn btn-primary', onclick: submit }, '新建'))
       );
     },
@@ -108,12 +142,12 @@ export function movePicker(app, nodeId) {
         const list = h('ul', { class: 'picker-list' });
         for (const r of rows) {
           const isBox = !isRegionId(r.id);
-          const blocked = isBox && A.hasContent(album.nodes[r.id]);
+          const blocked = isBox && (A.hasContent(album.nodes[r.id]) || A.isAlbumBox(album.nodes[r.id]));
           list.appendChild(
             h(
               'li',
               null,
-              h('button', { class: 'picker-row', disabled: blocked, onclick: () => ((at = r.id), render()) }, r.text, blocked ? h('small', null, '（有内容，不能放入子框）') : null)
+              h('button', { class: 'picker-row', disabled: blocked, onclick: () => ((at = r.id), render()) }, r.text, blocked ? h('small', null, A.isAlbumBox(album.nodes[r.id]) ? '（相册框，不能放入子框）' : '（有内容，不能放入子框）') : null)
             )
           );
         }
@@ -142,9 +176,10 @@ export async function boxActions(app, nodeId) {
   const kids = A.childNodes(album, nodeId);
   const siblings = A.childNodes(album, node.parent);
   const pos = siblings.findIndex((s) => s.id === nodeId);
-  const choice = await actionSheet(`“${node.title}”`, [
-    { label: '重命名', value: 'rename' },
-    { label: '设置类型', value: 'type', hint: node.type || '无' },
+  const isAlbum = A.isAlbumBox(node);
+  const choice = await actionSheet(isAlbum ? '相册框' : `“${node.title}”`, [
+    { label: '重命名', value: 'rename', disabled: isAlbum, hint: isAlbum ? '相册框名称固定' : '' },
+    { label: '设置类型', value: 'type', disabled: isAlbum, hint: isAlbum ? '' : node.type || '无' },
     { label: '背景颜色', value: 'color' },
     { label: '清除封面', value: 'uncover', disabled: !node.cover },
     { label: '复制为模板', value: 'copy', hint: '只复制框架，不复制内容' },
@@ -220,83 +255,147 @@ export function pasteFlow(app, parentId) {
   if (app.mutate((a) => A.pasteTemplate(a, app.regions, tpl, parentId))) toast(`已粘贴模板“${tpl.title}”（内容为空）`, 'ok');
 }
 
-/** 地点编辑：手动地址、地图链接，或经授权读取当前位置 */
+/** 地点编辑：手动输入地址，或经授权读取当前位置（配置了地址服务时自动转成中文地址） */
 export function locationDialog(app, nodeId) {
   const node = app.sync.album.nodes[nodeId];
   const loc = { ...(node.location || {}) };
+  delete loc.mapUrl;
+  const hadLocation = A.hasLocation(node.location);
+  let generation = 0; // 取消或关闭后，迟到的定位/查询结果一律丢弃
   return dialog(
     (close) => {
-      const addr = h('textarea', { class: 'input', rows: 2, placeholder: '地址（可手动输入）' });
+      const finish = (v) => {
+        generation++;
+        close(v);
+      };
+      const addr = h('textarea', { class: 'input', rows: 3, placeholder: '地址（可手动输入）' });
       addr.value = loc.address || '';
-      const url = h('input', { class: 'input', type: 'url', placeholder: '地图链接（可选，例如从地图 App 分享的链接）' });
-      url.value = loc.mapUrl || '';
       const coordText = h('p', { class: 'coord-text' });
-      const status = h('p', { class: 'dialog-hint' });
-      const showCoords = () => {
-        coordText.textContent = Number.isFinite(loc.lat)
+      const status = h('p', { class: 'dialog-hint', role: 'status' });
+      const actions = h('div', { class: 'row-gap' });
+
+      const fillAddress = async (gen) => {
+        if (!geocodeAvailable() || !hasCoords(loc)) return;
+        status.textContent = '正在根据坐标查询地址…';
+        try {
+          const text = await reverseGeocode(loc.lat, loc.lng);
+          if (gen !== generation) return;
+          if (text) {
+            addr.value = text;
+            status.textContent = '已根据定位填入地址，可以再修改。';
+          } else status.textContent = '没有查到对应地址，请手动填写。';
+        } catch (e) {
+          if (gen !== generation) return;
+          status.textContent = `${e.message}，请手动填写地址。`;
+        }
+        render();
+      };
+
+      const render = () => {
+        coordText.textContent = hasCoords(loc)
           ? `已保存坐标：${formatCoords(loc)}${loc.accuracy ? `（精度约 ${Math.round(loc.accuracy)} 米）` : ''}`
           : '未保存坐标';
+        actions.textContent = '';
+        if (locating) {
+          actions.appendChild(
+            h(
+              'button',
+              {
+                class: 'btn',
+                type: 'button',
+                onclick: () => {
+                  generation++;
+                  locating = false;
+                  status.textContent = '已取消定位。';
+                  render();
+                },
+              },
+              '取消定位'
+            )
+          );
+          return;
+        }
+        actions.appendChild(h('button', { class: 'btn', type: 'button', onclick: locate }, '获取当前位置'));
+        if (hasCoords(loc) && geocodeAvailable()) {
+          actions.appendChild(h('button', { class: 'btn', type: 'button', onclick: () => fillAddress(generation) }, '按坐标填写地址'));
+        }
+        if (hasCoords(loc)) {
+          actions.appendChild(
+            h(
+              'button',
+              {
+                class: 'btn',
+                type: 'button',
+                onclick: () => {
+                  delete loc.lat;
+                  delete loc.lng;
+                  delete loc.accuracy;
+                  status.textContent = '已清除坐标（保存后生效）。';
+                  render();
+                },
+              },
+              '清除坐标'
+            )
+          );
+        }
       };
-      showCoords();
-      const locate = h(
-        'button',
-        {
-          class: 'btn',
-          type: 'button',
-          onclick: () => {
-            if (!('geolocation' in navigator)) {
-              status.textContent = '当前浏览器不支持定位，请手动输入地址。';
-              return;
-            }
-            status.textContent = '正在获取位置…（需要你在浏览器弹窗中允许）';
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                loc.lat = Number(pos.coords.latitude.toFixed(7));
-                loc.lng = Number(pos.coords.longitude.toFixed(7));
-                loc.accuracy = pos.coords.accuracy;
-                loc.capturedAt = app.store.now();
-                status.textContent = '已获取当前位置。如需文字地址，请在上方手动填写。';
-                showCoords();
-              },
-              (err) => {
-                status.textContent =
-                  err.code === 1 ? '你拒绝了定位权限。可以继续手动输入地址。' : '获取位置失败（信号弱或超时），可以稍后重试或手动输入地址。';
-              },
-              { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
+
+      let locating = false;
+      const locate = () => {
+        if (!('geolocation' in navigator)) {
+          status.textContent = '当前浏览器不支持定位，请手动输入地址。';
+          return;
+        }
+        const gen = ++generation;
+        locating = true;
+        status.textContent = '正在获取位置…（需要你在浏览器弹窗中允许）';
+        render();
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            if (gen !== generation) return;
+            locating = false;
+            loc.lat = Number(pos.coords.latitude.toFixed(7));
+            loc.lng = Number(pos.coords.longitude.toFixed(7));
+            loc.accuracy = pos.coords.accuracy;
+            loc.capturedAt = app.store.now();
+            status.textContent = geocodeAvailable() ? '已获取当前位置。' : '已获取当前位置。文字地址请在上方手动填写。';
+            render();
+            fillAddress(gen);
           },
-        },
-        '获取当前位置'
-      );
-      const clearCoords = h(
-        'button',
-        {
-          class: 'btn',
-          type: 'button',
-          onclick: () => {
-            delete loc.lat;
-            delete loc.lng;
-            delete loc.accuracy;
-            showCoords();
+          (err) => {
+            if (gen !== generation) return;
+            locating = false;
+            status.textContent =
+              err.code === 1 ? '你拒绝了定位权限，可以直接手动输入地址。' : '获取位置失败（信号弱或超时），可以稍后重试或手动输入地址。';
+            render();
           },
-        },
-        '清除坐标'
-      );
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      };
+
       const save = () => {
-        const next = { ...loc, address: addr.value.trim(), mapUrl: url.value.trim() };
-        if (app.mutate((a) => A.setLocation(a, nodeId, next))) close(true);
+        const next = { ...loc, address: addr.value.trim() };
+        if (app.mutate((a) => A.setLocation(a, nodeId, next))) finish(true);
       };
+      const remove = async () => {
+        if (!(await confirmDialog('删除这个框里保存的地点（地址和坐标）？', { danger: true, okLabel: '删除' }))) return;
+        if (app.mutate((a) => A.setLocation(a, nodeId, null))) finish(true);
+      };
+      render();
       return h(
         'div',
         { class: 'loc-form' },
         addr,
-        url,
         coordText,
-        h('div', { class: 'row-gap' }, locate, clearCoords),
+        actions,
         status,
-        buttons(h('button', { class: 'btn', onclick: () => close() }, '取消'), h('button', { class: 'btn btn-primary', onclick: save }, '保存'))
+        buttons(
+          hadLocation ? h('button', { class: 'btn btn-danger-text', onclick: remove }, '删除地点') : null,
+          h('button', { class: 'btn', onclick: () => finish() }, '取消'),
+          h('button', { class: 'btn btn-primary', onclick: save }, '保存')
+        )
       );
     },
-    { title: '编辑地点' }
+    { title: '编辑地点', onClose: () => generation++ }
   );
 }

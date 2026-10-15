@@ -59,7 +59,24 @@ const server = await serve();
 const BASE = `http://localhost:${server.address().port}/?demo=1&tab=1`;
 await mkdir(SHOTS, { recursive: true });
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
-const ctx = await browser.newContext({ viewport: { width: 1100, height: 850 } });
+const ctx = await browser.newContext({
+  viewport: { width: 1100, height: 850 },
+  permissions: ['geolocation'],
+  geolocation: { latitude: 31.2304, longitude: 121.4737 },
+});
+// 注入测试用的腾讯位置服务 Key，并拦截逆地理编码请求（不访问真实服务）
+const geoRequests = [];
+await ctx.route('**/js/config.js', async (route) => {
+  const res = await route.fetch();
+  const body = (await res.text()).replace("tencentMapKey: ''", "tencentMapKey: 'TESTKEY'");
+  await route.fulfill({ response: res, body });
+});
+await ctx.route('https://apis.map.qq.com/**', async (route) => {
+  const url = new URL(route.request().url());
+  geoRequests.push({ location: url.searchParams.get('location'), referer: route.request().headers().referer || '' });
+  const payload = { status: 0, result: { address: '上海市黄浦区人民大道', formatted_addresses: { recommend: '人民广场附近' } } };
+  await route.fulfill({ contentType: 'application/javascript', body: `${url.searchParams.get('callback')}(${JSON.stringify(payload)})` });
+});
 const errors = [];
 
 async function openPage() {
@@ -227,9 +244,59 @@ try {
     await A.click('.section-head:has(h2:text("地点")) button');
     await A.fill('.loc-form textarea', '某某路 88 号');
     await A.click('.dialog button:text-is("保存")');
-    await A.waitForSelector('.map-links a:text("高德地图")');
-    assert.equal(await A.locator('.map-links a').count(), 4);
+    await A.waitForSelector('.map-links a:text("在 Apple 地图中打开")');
+    assert.equal(await A.locator('.map-links a').count(), 1);
+    assert.equal(await A.getAttribute('.map-links a', 'target'), '_blank');
+    assert.ok(await settle(A));
+  });
+
+  await step('定位后自动转成中文地址；Apple 地图链接用换算后的坐标；可删除地点', async () => {
+    await A.click('.section-head:has(h2:text("地点")) button');
+    await A.click('.dialog button:text-is("获取当前位置")');
+    await A.waitForFunction(() => document.querySelector('.loc-form textarea').value.includes('人民大道'), null, { timeout: 15000 });
+    assert.equal(await A.inputValue('.loc-form textarea'), '上海市黄浦区人民大道（人民广场附近）');
+    assert.match(geoRequests[0].location, /^31\.228\d+,121\.478\d+$/); // 已换算为 GCJ-02
+    assert.match(geoRequests[0].referer, /^http:\/\/localhost:\d+\/$/); // 发送来源域名，供域名白名单校验
+    assert.ok(await A.isVisible('.dialog button:text-is("按坐标填写地址")'));
+    await A.click('.dialog button:text-is("保存")');
+    await A.waitForSelector('.location .note:text("人民大道")');
+    assert.match(await A.getAttribute('.map-links a', 'href'), /^https:\/\/maps\.apple\.com\/\?ll=31\.228\d+,121\.478\d+&q=/);
     await A.screenshot({ path: join(SHOTS, 'leaf-content.png') });
+    await A.click('.section-head:has(h2:text("地点")) button');
+    await A.click('.dialog button:text-is("删除地点")');
+    await A.click('.overlay:last-child .dialog button:text-is("删除")');
+    await A.waitForSelector('text=暂无地点');
+    // 重新手动填写地址，供后续步骤使用
+    await A.click('.section-head:has(h2:text("地点")) button');
+    await A.fill('.loc-form textarea', '某某路 88 号');
+    await A.click('.dialog button:text-is("保存")');
+    await A.waitForSelector('.location .note:text("某某路 88 号")');
+    assert.ok(await settle(A));
+  });
+
+  await step('相册框：名称固定为“相册”、只能放照片、不能加子框', async () => {
+    await A.goto(`${BASE}#/r/A07-C01`);
+    await A.waitForSelector('.page-head h1:text-is("A07-C01")');
+    await A.click('.toolbar button:has-text("新建框")');
+    await A.click('.seg:text("相册框")');
+    assert.equal(await A.isVisible('.dialog input.input'), false);
+    await A.click('.dialog button:text-is("新建")');
+    await A.waitForSelector('.tile:has(.tile-badge:text("相册框"))');
+    await tileMenu(A, '相册', '重命名').catch(() => {});
+    assert.ok(await A.isDisabled('.sheet-item:has-text("重命名")'));
+    await A.click('.sheet-item:text("取消")');
+    await A.click('.tile-title:text-is("相册")');
+    await A.waitForSelector('.page-head h1:has-text("相册")');
+    assert.equal(await A.locator('.toolbar').count(), 0);
+    assert.equal(await A.locator('.section-head h2:text("备注")').count(), 0);
+    assert.equal(await A.locator('.section-head h2:text("地点")').count(), 0);
+    await A.setInputFiles('#file-input', [join(FIX, 'square.png')]);
+    await A.waitForFunction(() => /完成 1，失败 0/.test(document.querySelector('.up-summary').textContent), null, { timeout: 20000 });
+    await A.click('.dialog button:text-is("关闭")');
+    await A.waitForSelector('.photo img[src]');
+    await A.screenshot({ path: join(SHOTS, 'album-box.png') });
+    const lit = await A.evaluate(() => [...window.__app.lit]);
+    assert.ok(lit.includes('A07-C01'));
     assert.ok(await settle(A));
   });
 
@@ -370,14 +437,25 @@ try {
     await B.waitForSelector('.tile-title:text-is("相册")');
   });
 
-  await step('刷新后需要重新输入密码；勾选“记住此设备”后自动进入，并可退出清除', async () => {
+  await step('同一标签页刷新不用重输密码；新开页面需要密码；“记住此设备”后新页面也自动进入；退出后清除', async () => {
     await B.click('button:text-is("结束编辑")');
     await B.waitForSelector('button:text-is("开始编辑")');
     await B.reload();
+    await B.waitForSelector('.topbar');
+    const N1 = await openPage();
+    await N1.waitForSelector('input[type=password]');
+    await N1.close();
+    await B.click('button[aria-label="菜单"]');
+    await B.click('.sheet-item:has-text("退出并清除本设备")');
+    await B.waitForSelector('input[type=password]');
+    await B.reload();
     await B.waitForSelector('input[type=password]');
     await login(B, { remember: true });
-    await B.reload();
-    await B.waitForSelector('.topbar');
+    const N2 = await openPage();
+    // 已记住设备：不再要求输入密码（A、B 已在线，第三个页面会显示“在线人数已满”，同样说明已自动解锁）
+    await N2.waitForSelector('.topbar, .card h1:text("在线人数已满")');
+    assert.equal(await N2.locator('input[type=password]').count(), 0);
+    await N2.close();
     await B.click('button[aria-label="菜单"]');
     await B.click('.sheet-item:has-text("退出并清除本设备")');
     await B.waitForSelector('input[type=password]');
@@ -390,11 +468,21 @@ try {
     const P = A;
     await P.setViewportSize({ width: 375, height: 812 });
     await P.goto(BASE);
-    await P.waitForSelector('input[type=password]');
-    await P.screenshot({ path: join(SHOTS, 'm-login.png') });
-    await login(P);
     await P.waitForSelector('.grid .tile');
     await P.screenshot({ path: join(SHOTS, 'm-home.png') });
+    const widths = await P.$$eval('.grid .tile', (els) => els.slice(0, 3).map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().top)]));
+    assert.equal(widths[0][1], widths[1][1]); // 一行两个
+    assert.notEqual(widths[1][1], widths[2][1]);
+    assert.ok(widths[0][0] > 150 && widths[0][0] < 180, `tile width ${widths[0][0]}`);
+    const inputFont = await P.evaluate(() => {
+      const i = document.createElement('input');
+      i.className = 'input';
+      document.body.appendChild(i);
+      const f = getComputedStyle(i).fontSize;
+      i.remove();
+      return f;
+    });
+    assert.equal(inputFont, '16px');
     const overflow = await P.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
     assert.equal(overflow, false);
     await P.goto(`${BASE}#/r/A03`);
@@ -465,6 +553,26 @@ try {
     }, blob);
     assert.deepEqual(secret, { secretId: 'AKIDexample123', secretKey: 'secretkey456' });
     await E.close();
+  });
+
+  await step('照片很多时分批显示（每次 60 张）', async () => {
+    await A.click('button:text-is("开始编辑")');
+    await A.waitForSelector('.chip-status.editing');
+    await A.evaluate(async () => {
+      const app = window.__app;
+      const box = Object.values(app.sync.album.nodes).find((n) => n.kind === 'album');
+      const recs = Array.from({ length: 70 }, (_, i) => ({ id: `fake${i}`, width: 10, height: 10, uploadedAt: i }));
+      const m = await import('/js/album.js');
+      app.mutate((a) => m.addPhotos(a, box.id, recs));
+      location.hash = `#/b/${box.id}`;
+    });
+    await A.waitForSelector('.more-btn');
+    assert.equal(await A.locator('.photo').count(), 60);
+    await A.click('.more-btn');
+    await A.waitForFunction(() => document.querySelectorAll('.photo').length === 71);
+    assert.equal(await A.locator('.more-btn').count(), 0);
+    assert.ok(await settle(A));
+    await A.click('button:text-is("结束编辑")');
   });
 
   await step('数据自检无问题；页面无脚本错误', async () => {

@@ -3,7 +3,7 @@
 import { h, clear, dialog, buttons, actionSheet, promptDialog, confirmDialog, toast, formatTime } from './ui.js';
 import { setCaption, deletePhoto, setCover, ancestorIds } from './album.js';
 import { isRegionId } from './regions.js';
-import { mapLinks, formatCoords } from './maps.js';
+import { appleMapsUrl, formatCoords } from './maps.js';
 import { photoKey, thumbKey } from './upload.js';
 
 function sizeText(bytes) {
@@ -27,7 +27,7 @@ export function showAttributes(photo) {
           row('拍摄时间', ex.takenAt ? `${ex.takenAt}${ex.offset ? `（${ex.offset}）` : ''}` : null),
           row('拍摄地点（GPS）', coords ? `${formatCoords(coords)}${Number.isFinite(ex.altitude) ? `，海拔 ${ex.altitude} 米` : ''}` : null),
           coords
-            ? h('div', { class: 'attr-links' }, mapLinks(coords, '拍摄地点').map((l) => h('a', { href: l.href, target: '_blank', rel: 'noopener noreferrer' }, l.label)))
+            ? h('div', { class: 'attr-links' }, h('a', { href: appleMapsUrl(coords, '拍摄地点'), target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中查看'))
             : null,
           row('拍摄设备', ex.device || null),
           row('镜头', ex.lens || null),
@@ -106,7 +106,7 @@ export function openViewer(app, photoIds, start) {
     }
     if (choice === 'cover') {
       const target = await actionSheet('设为哪个框（区域）的封面？', coverTargets(app, p));
-      if (target && app.mutate((a) => setCover(a, app.regions, target, p.id))) toast('封面已设置', 'ok');
+      if (target && app.mutate((a) => setCover(a, app.regions, target, p.id, app.store.now()))) toast('封面已设置', 'ok');
     }
     if (choice === 'delete') {
       if (!(await confirmDialog('确定删除这张照片？删除后 30 天内可由技术维护恢复。', { danger: true, okLabel: '删除' }))) return;

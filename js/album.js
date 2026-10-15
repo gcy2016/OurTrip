@@ -2,9 +2,10 @@
 // album.json 结构：
 // {
 //   schema: 1,
-//   nodes:  { [id]: { id, parent, title, type, order, color, cover, note, location, photos: [photoId] } },
+//   nodes:  { [id]: { id, parent, kind?, title, type, order, color, cover, note, location, photos: [photoId] } },
+//           kind 为 'album' 时是“相册框”：名称固定为“相册”，只能放照片，不能有子框、备注和地点。
 //   photos: { [id]: { id, box, caption, exif, width, height, origName, origSize, uploadedAt } },
-//   regionCovers: { [regionId]: photoId },
+//   regionCovers: { [regionId]: { photo, at } },   // at：用户设置封面的时间（旧数据可能是照片 id 字符串）
 //   trash:  [ { id, kind: 'box'|'photo', deletedAt, parent, region, order, node?, photos: [...] } ],
 // }
 // parent 为固定区域编号（如 A03-C01）或另一个自定义框的 id。
@@ -14,6 +15,11 @@ import { isRegionId, isContentRegion } from './regions.js';
 export const SCHEMA = 1;
 export const TRASH_KEEP_MS = 30 * 24 * 3600 * 1000;
 export const QUICK_TYPES = ['相册', '美食', '景点', '餐厅', '行程'];
+export const ALBUM_TITLE = '相册';
+
+export function isAlbumBox(node) {
+  return !!node && node.kind === 'album';
+}
 
 export class AlbumError extends Error {
   constructor(code, message) {
@@ -117,7 +123,7 @@ export function isWithin(album, regions, id, target) {
 export function canHoldChildren(album, regions, containerId) {
   if (isRegionId(containerId)) return isContentRegion(regions, containerId);
   const n = album.nodes[containerId];
-  return !!n && !hasContent(n);
+  return !!n && !isAlbumBox(n) && !hasContent(n);
 }
 
 function assertContainer(album, regions, containerId) {
@@ -129,6 +135,7 @@ function assertContainer(album, regions, containerId) {
   }
   const n = album.nodes[containerId];
   if (!n) throw new AlbumError('NOT_FOUND', '目标框不存在');
+  if (isAlbumBox(n)) throw new AlbumError('ALBUM_NO_CHILDREN', '相册框只能放照片，不能添加子框。');
   if (hasContent(n)) {
     throw new AlbumError(
       'HAS_CONTENT',
@@ -143,8 +150,9 @@ function getNode(album, id) {
   return n;
 }
 
-function assertLeafForContent(album, id) {
+function assertLeafForContent(album, id, { photosOnly = false } = {}) {
   const n = getNode(album, id);
+  if (isAlbumBox(n) && !photosOnly) throw new AlbumError('ALBUM_ONLY_PHOTOS', '相册框只能放照片，不能添加备注或地点。');
   if (hasChildren(album, id)) {
     throw new AlbumError('HAS_CHILDREN', '这个框里已经有子框，内容请放到末级框中');
   }
@@ -165,14 +173,16 @@ function nextOrder(album, parentId) {
 
 // ---------- 框操作 ----------
 
-export function addBox(album, regions, parentId, { title = '', type = '', color = null } = {}) {
+export function addBox(album, regions, parentId, { title = '', type = '', color = null, kind = null } = {}) {
   assertContainer(album, regions, parentId);
   const id = newId('b');
+  const isAlbum = kind === 'album';
   album.nodes[id] = {
     id,
     parent: parentId,
-    title: String(title).trim() || '新建框',
-    type: String(type || '').trim(),
+    ...(isAlbum ? { kind: 'album' } : {}),
+    title: isAlbum ? ALBUM_TITLE : String(title).trim() || '新建框',
+    type: isAlbum ? ALBUM_TITLE : String(type || '').trim(),
     order: nextOrder(album, parentId),
     color,
     cover: null,
@@ -185,6 +195,9 @@ export function addBox(album, regions, parentId, { title = '', type = '', color 
 
 export function updateBox(album, id, patch) {
   const n = getNode(album, id);
+  if (isAlbumBox(n) && ('title' in patch || 'type' in patch)) {
+    throw new AlbumError('ALBUM_FIXED', '相册框的名称固定为“相册”，不能修改。');
+  }
   if ('title' in patch) n.title = String(patch.title).trim() || '未命名';
   if ('type' in patch) n.type = String(patch.type || '').trim();
   if ('color' in patch) n.color = patch.color || null;
@@ -206,7 +219,7 @@ export function setLocation(album, id, loc) {
 function removeCoverRefs(album, photoIds) {
   const dead = new Set(photoIds);
   for (const n of Object.values(album.nodes)) if (n.cover && dead.has(n.cover)) n.cover = null;
-  for (const [rid, pid] of Object.entries(album.regionCovers)) if (dead.has(pid)) delete album.regionCovers[rid];
+  for (const rid of Object.keys(album.regionCovers)) if (dead.has(regionCoverPhoto(album, rid))) delete album.regionCovers[rid];
 }
 
 /**
@@ -284,6 +297,7 @@ export function mergeBoxes(album, ids, title = '') {
 export function copyTemplate(album, id) {
   const n = getNode(album, id);
   const walk = (node) => ({
+    ...(isAlbumBox(node) ? { kind: 'album' } : {}),
     title: node.title,
     type: node.type,
     color: node.color,
@@ -296,11 +310,13 @@ export function pasteTemplate(album, regions, template, parentId) {
   assertContainer(album, regions, parentId);
   const make = (tpl, parent) => {
     const id = newId('b');
+    const isAlbum = tpl.kind === 'album';
     album.nodes[id] = {
       id,
       parent,
-      title: tpl.title || '未命名',
-      type: tpl.type || '',
+      ...(isAlbum ? { kind: 'album' } : {}),
+      title: isAlbum ? ALBUM_TITLE : tpl.title || '未命名',
+      type: isAlbum ? ALBUM_TITLE : tpl.type || '',
       order: nextOrder(album, parent),
       color: tpl.color || null,
       cover: null,
@@ -362,7 +378,7 @@ export function shiftOrder(album, id, delta) {
 // ---------- 照片 ----------
 
 export function addPhotos(album, boxId, photos) {
-  const n = assertLeafForContent(album, boxId);
+  const n = assertLeafForContent(album, boxId, { photosOnly: true });
   for (const p of photos) {
     if (album.photos[p.id]) continue;
     album.photos[p.id] = { caption: '', exif: null, ...p, box: boxId };
@@ -405,11 +421,16 @@ export function photoWithin(album, regions, photoId, target) {
   return isWithin(album, regions, p.box, target);
 }
 
-export function setCover(album, regions, targetId, photoId) {
+function regionCoverPhoto(album, regionId) {
+  const c = album.regionCovers[regionId];
+  return typeof c === 'string' ? c : (c && c.photo) || null;
+}
+
+export function setCover(album, regions, targetId, photoId, now = Date.now()) {
   if (!photoWithin(album, regions, photoId, targetId)) {
     throw new AlbumError('NOT_WITHIN', '只能选择这个框（或区域）里面的照片作为封面');
   }
-  if (isRegionId(targetId)) album.regionCovers[targetId] = photoId;
+  if (isRegionId(targetId)) album.regionCovers[targetId] = { photo: photoId, at: now };
   else getNode(album, targetId).cover = photoId;
 }
 
@@ -418,11 +439,31 @@ export function clearCover(album, targetId) {
   else getNode(album, targetId).cover = null;
 }
 
+export function hasUserCover(album, targetId) {
+  return isRegionId(targetId) ? !!regionCoverPhoto(album, targetId) : !!(album.nodes[targetId] && album.nodes[targetId].cover);
+}
+
 /** 返回当前有效的封面照片 id；照片已删除或已移出该框时返回 null（回退为纯色/仓库图片） */
 export function resolveCover(album, regions, targetId) {
-  const pid = isRegionId(targetId) ? album.regionCovers[targetId] : album.nodes[targetId] && album.nodes[targetId].cover;
+  const pid = isRegionId(targetId) ? regionCoverPhoto(album, targetId) : album.nodes[targetId] && album.nodes[targetId].cover;
   if (!pid) return null;
   return photoWithin(album, regions, pid, targetId) ? pid : null;
+}
+
+/**
+ * 固定区域的背景：用户在网页上选的照片与仓库配置的代表图片“谁后设置谁生效”，可以互相替换；
+ * 生效的一方失效（照片被删/移走、没有配置图片）时用另一方；两者都没有时返回 null，由页面显示纯色。
+ * display：仓库配置 { image, imageUpdatedAt }，imageUpdatedAt 为日期字符串（如 '2026-10-15 20:00'）。
+ */
+export function resolveRegionBackground(album, regions, regionId, display = {}) {
+  const c = album.regionCovers[regionId];
+  const photo = resolveCover(album, regions, regionId);
+  const userAt = photo ? (typeof c === 'object' && c && Number(c.at)) || 0 : -1;
+  const image = display && display.image ? String(display.image) : null;
+  const codeAt = image ? Date.parse(String(display.imageUpdatedAt || '').replace(' ', 'T')) || 0 : -1;
+  if (photo && (!image || userAt >= codeAt)) return { kind: 'photo', photoId: photo, fallback: image ? { kind: 'image', src: image } : null };
+  if (image) return { kind: 'image', src: image, fallback: photo ? { kind: 'photo', photoId: photo } : null };
+  return null;
 }
 
 /** 某个区域/框之下的全部照片 id（用于选封面） */
@@ -528,6 +569,7 @@ export function validateAlbum(album, regions) {
     else if (!regions.byId.has(rid)) problems.push(`框 ${n.id} 挂在未知区域 ${rid} 下`);
     else if (!isContentRegion(regions, rid) && n.parent === rid) problems.push(`框 ${n.id} 直接挂在有二级区域的一级区域 ${rid} 下`);
     if (hasContent(n) && hasChildren(album, n.id)) problems.push(`框 ${n.id} 同时有内容和子框`);
+    if (isAlbumBox(n) && (hasChildren(album, n.id) || n.note.trim() || hasLocation(n.location))) problems.push(`相册框 ${n.id} 含有照片以外的内容或子框`);
     for (const pid of n.photos) {
       if (!album.photos[pid]) problems.push(`框 ${n.id} 引用了不存在的照片 ${pid}`);
       else if (album.photos[pid].box !== n.id) problems.push(`照片 ${pid} 的所属框不一致`);
