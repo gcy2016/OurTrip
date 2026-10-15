@@ -17,8 +17,13 @@
 export const REGION_DISPLAY = {};
 
 export const COLORS = {
-  region: '#3a6ea5', // 固定区域默认背景（蓝色）
-  box: '#5f7f8f', // 自定义框默认背景
+  region: '#eef2f7', // 固定区域默认背景（未点亮浅色；点亮后为明亮渐变，见 css/app.css）
+  box: '#eaf2ff', // 自定义框默认背景
 };
 
-export const BOX_PALETTE = ['#5f7f8f', '#3a6ea5', '#2f8f83', '#6b8e4e', '#b8893a', '#c4664a', '#a35a7a', '#7563a8', '#56606b', '#8c7462'];
+// 自定义框可选背景色：明亮的浅色为主，另有几种鲜亮色（深色背景上自动改用白字）
+export const BOX_PALETTE = [
+  '#eaf2ff', '#dbeafe', '#ccfbf1', '#dcfce7', '#fef3c7', '#ffedd5',
+  '#fde2e4', '#fce7f3', '#ede9fe', '#e0f2fe',
+  '#60a5fa', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#2f7cf6',
+];

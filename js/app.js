@@ -10,8 +10,9 @@ import { CosStore } from './store-cos.js';
 import { Session, LOCK_RENEW_EVERY, HEARTBEAT_EVERY } from './session.js';
 import { AlbumSync } from './sync.js';
 import { h, clear, toast, confirmDialog, alertDialog, actionSheet, promptDialog, busy, copyToClipboard, formatTime } from './ui.js';
-import { openUploader, thumbKey } from './upload.js';
+import { openUploader, thumbKey, photoKey } from './upload.js';
 import { openViewer } from './viewer.js';
+import { batchDelete, batchDownload } from './photo-batch.js';
 import * as B from './boxes.js';
 import { appleMapsUrl, formatCoords, copyText, hasCoords } from './maps.js';
 
@@ -123,6 +124,7 @@ const app = {
   selecting: false,
   selected: new Set(),
   photoShown: new Map(),
+  photoSelect: null, // { boxId, ids: Set }
   timers: [],
   credBlob: null,
   get editing() {
@@ -412,6 +414,7 @@ window.addEventListener('hashchange', () => {
   parseRoute();
   app.selecting = false;
   app.selected.clear();
+  app.photoSelect = null;
   renderNow();
   window.scrollTo(0, 0);
 });
@@ -651,28 +654,76 @@ function lazyImage(key, alt = '') {
   return img;
 }
 
-/** 背景图：bg 为 {kind:'photo'|'image', ..., fallback}；图片加载失败时依次回退，最后露出纯色 */
+/**
+ * 背景图：spec 为 {kind:'photo'|'image', ..., fallback}。
+ * 照片封面先显示缩略图，进入可视区并加载完成后再换成清晰原图（铺满框，居中裁切，像桌面壁纸）。
+ * 加载失败时依次回退，最后露出纯色。
+ */
 function backgroundImage(spec) {
   if (!spec) return null;
   const img = h('img', { alt: '', loading: 'lazy', decoding: 'async' });
+  const giveUp = () => {
+    const t = img.closest('.tile');
+    if (t) t.classList.remove('has-photo');
+    img.remove();
+  };
   const load = (s) => {
-    if (!s) return img.remove();
+    if (!s) return giveUp();
     img.onerror = () => load(s.fallback);
-    if (s.kind === 'image') img.src = s.src;
-    else app.imageUrl(thumbKey(s.photoId)).then((u) => (u ? (img.src = u) : load(s.fallback))).catch(() => load(s.fallback));
+    if (s.kind === 'image') {
+      img.onload = null;
+      img.src = s.src;
+      return;
+    }
+    app
+      .imageUrl(thumbKey(s.photoId))
+      .then((u) => {
+        if (!u) return load(s.fallback);
+        img.onload = () => {
+          img.onload = null;
+          upgrade(s.photoId);
+        };
+        img.src = u;
+      })
+      .catch(() => load(s.fallback));
+  };
+  const upgrade = (photoId) => {
+    app
+      .imageUrl(photoKey(photoId))
+      .then((full) => {
+        if (!full) return;
+        const pre = new Image();
+        pre.onload = () => {
+          img.onerror = null;
+          img.src = full;
+        };
+        pre.src = full;
+      })
+      .catch(() => {});
   };
   load(spec);
   return img;
 }
 
-function tile({ href, title, sub, color, bg: bgSpec, lit, badge, extra, onclick, selected }) {
+/** 背景色是否偏深（深色上改用白字） */
+function isDark(hex) {
+  const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+  if (!m) return false;
+  const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.6;
+}
+
+function tile({ href, title, sub, color, bg: bgSpec, lit, badge, extra, onclick, selected, region }) {
   const bg = h('div', { class: 'tile-bg', style: { background: color } });
   const img = backgroundImage(bgSpec);
   if (img) bg.appendChild(img);
+  const cls = ['tile', region ? 'region' : '', lit === false ? 'unlit' : '', lit ? 'lit' : '', selected ? 'selected' : '', img ? 'has-photo' : '', !img && isDark(color) ? 'on-dark' : '']
+    .filter(Boolean)
+    .join(' ');
   return h(
     'a',
     {
-      class: `tile${lit === false ? ' unlit' : ''}${lit ? ' lit' : ''}${selected ? ' selected' : ''}`,
+      class: cls,
       href: href || '#',
       onclick,
     },
@@ -691,7 +742,7 @@ function regionTile(id) {
   let sub = '';
   if (r.children.length) {
     const litKids = r.children.filter((c) => app.lit.has(c)).length;
-    sub = `点亮 ${litKids}/${r.children.length}`;
+    sub = `已点亮 ${litKids}/${r.children.length}`;
   }
   return tile({
     href: `#/r/${id}`,
@@ -699,6 +750,7 @@ function regionTile(id) {
     sub,
     color: COLORS.region,
     bg,
+    region: true,
     lit: app.lit.has(id),
   });
 }
@@ -709,7 +761,7 @@ function homeView() {
   return h(
     'section',
     null,
-    h('div', { class: 'page-head' }, h('h1', null, '全部区域'), h('p', { class: 'sub' }, `已点亮 ${litCount} / ${total} 个一级区域`)),
+    h('div', { class: 'page-head' }, h('h1', null, '全部区域'), h('p', { class: 'sub' }, `已点亮 ${litCount}/${total} 个一级区域`)),
     h('div', { class: 'grid' }, app.regions.level1.map(regionTile))
   );
 }
@@ -724,7 +776,7 @@ function level1View(id) {
       'div',
       { class: 'page-head' },
       h('h1', null, app.regionName(id)),
-      h('p', { class: 'sub' }, `${r.children.length} 个二级区域，已点亮 ${litKids} 个`),
+      h('p', { class: 'sub' }, `已点亮 ${litKids}/${r.children.length} 个二级区域`),
       regionCoverTools(id)
     ),
     h('div', { class: 'grid' }, r.children.map(regionTile))
@@ -900,16 +952,71 @@ function contentView(node, { photosOnly = false } = {}) {
   const editing = app.editing;
   const wrap = h('div', { class: 'content' });
 
-  // 照片
-  const photoHead = h('div', { class: 'section-head' }, h('h2', null, `照片${node.photos.length ? `（${node.photos.length}）` : ''}`));
-  if (editing) {
+  // 照片（相册框支持多选：批量下载；有编辑权时可批量删除）
+  const sel = photosOnly && app.photoSelect && app.photoSelect.boxId === node.id ? app.photoSelect.ids : null;
+  const photoHead = h('div', { class: 'section-head' }, h('h2', null, sel ? `已选 ${sel.size} 张` : `照片${node.photos.length ? `（${node.photos.length}）` : ''}`));
+  const headActions = h('div', { class: 'section-actions' });
+  photoHead.appendChild(headActions);
+  const endSelect = () => {
+    app.photoSelect = null;
+    app.render();
+  };
+  if (sel) {
+    const ids = node.photos.filter((pid) => sel.has(pid));
+    headActions.appendChild(
+      h(
+        'button',
+        {
+          class: 'btn btn-small',
+          onclick: () => {
+            if (sel.size === node.photos.length) sel.clear();
+            else node.photos.forEach((pid) => sel.add(pid));
+            app.render();
+          },
+        },
+        sel.size === node.photos.length ? '全不选' : '全选'
+      )
+    );
+    headActions.appendChild(h('button', { class: 'btn btn-small btn-primary', disabled: !ids.length, onclick: () => batchDownload(app, ids) }, `下载${ids.length ? `（${ids.length}）` : ''}`));
+    if (editing) {
+      headActions.appendChild(
+        h(
+          'button',
+          {
+            class: 'btn btn-small btn-danger-text',
+            disabled: !ids.length,
+            onclick: async () => {
+              if (await batchDelete(app, ids)) endSelect();
+            },
+          },
+          `删除${ids.length ? `（${ids.length}）` : ''}`
+        )
+      );
+    }
+    headActions.appendChild(h('button', { class: 'btn btn-small', onclick: endSelect }, '完成'));
+  } else if (photosOnly && node.photos.length) {
+    headActions.appendChild(
+      h(
+        'button',
+        {
+          class: 'btn btn-small',
+          onclick: () => {
+            app.photoSelect = { boxId: node.id, ids: new Set() };
+            app.render();
+          },
+        },
+        '多选'
+      )
+    );
+  }
+  if (editing && !sel) {
     const input = h('input', { type: 'file', multiple: true, accept: 'image/*,.heic,.heif', class: 'visually-hidden', id: 'file-input' });
     input.addEventListener('change', () => {
       const files = input.files;
       if (files && files.length) openUploader(app, node.id, files);
       input.value = '';
     });
-    photoHead.appendChild(h('label', { class: 'btn btn-small btn-primary', for: 'file-input' }, '上传照片', input));
+    headActions.appendChild(h('label', { class: 'btn btn-small btn-primary', for: 'file-input' }, '上传照片', input));
   }
   wrap.appendChild(photoHead);
   if (node.photos.length) {
@@ -920,12 +1027,28 @@ function contentView(node, { photosOnly = false } = {}) {
         'div',
         { class: 'photo-grid' },
         node.photos.slice(0, shown).map((pid, i) =>
-          h(
-            'button',
-            { class: 'photo', 'aria-label': `查看第 ${i + 1} 张`, onclick: () => openViewer(app, node.photos.slice(), i) },
-            lazyImage(thumbKey(pid)),
-            node.cover === pid ? h('span', { class: 'photo-flag' }, '封面') : null
-          )
+          sel
+            ? h(
+                'button',
+                {
+                  class: `photo selectable${sel.has(pid) ? ' selected' : ''}`,
+                  'aria-label': `选择第 ${i + 1} 张`,
+                  'aria-pressed': String(sel.has(pid)),
+                  onclick: () => {
+                    if (sel.has(pid)) sel.delete(pid);
+                    else sel.add(pid);
+                    app.render();
+                  },
+                },
+                lazyImage(thumbKey(pid)),
+                h('span', { class: 'photo-check' }, sel.has(pid) ? '✓' : '')
+              )
+            : h(
+                'button',
+                { class: 'photo', 'aria-label': `查看第 ${i + 1} 张`, onclick: () => openViewer(app, node.photos.slice(), i) },
+                lazyImage(thumbKey(pid)),
+                node.cover === pid ? h('span', { class: 'photo-flag' }, '封面') : null
+              )
         )
       )
     );

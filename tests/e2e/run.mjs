@@ -294,9 +294,35 @@ try {
     await A.waitForFunction(() => /完成 1，失败 0/.test(document.querySelector('.up-summary').textContent), null, { timeout: 20000 });
     await A.click('.dialog button:text-is("关闭")');
     await A.waitForSelector('.photo img[src]');
-    await A.screenshot({ path: join(SHOTS, 'album-box.png') });
     const lit = await A.evaluate(() => [...window.__app.lit]);
     assert.ok(lit.includes('A07-C01'));
+    assert.ok(await settle(A));
+  });
+
+  await step('相册框多选：批量下载（打包 zip）与批量删除', async () => {
+    await A.setInputFiles('#file-input', [join(FIX, 'no-exif.jpg'), join(FIX, 'with-exif.jpg')]);
+    await A.waitForFunction(() => /完成 2，失败 0/.test(document.querySelector('.up-summary').textContent), null, { timeout: 20000 });
+    await A.click('.dialog button:text-is("关闭")');
+    await A.waitForFunction(() => document.querySelectorAll('.photo img[src]').length === 3);
+    await A.click('.section-head button:text-is("多选")');
+    await A.click('.section-head button:text-is("全选")');
+    await A.waitForSelector('.section-head h2:text("已选 3 张")');
+    await A.screenshot({ path: join(SHOTS, 'album-select.png') });
+    await A.click('.section-head button:has-text("下载")');
+    await A.waitForSelector('.dialog:has-text("已准备好 3 张照片")');
+    const [dl] = await Promise.all([A.waitForEvent('download'), A.click('.dialog button:text-is("下载压缩包")')]);
+    const zipPath = join(SHOTS, 'download.zip');
+    await dl.saveAs(zipPath);
+    const { execFileSync } = await import('node:child_process');
+    const names = execFileSync('python3', ['-c', 'import zipfile,sys;z=zipfile.ZipFile(sys.argv[1]);assert z.testzip() is None;print("|".join(sorted(z.namelist())))', zipPath]).toString().trim();
+    assert.equal(names, 'no-exif.jpg|square.jpg|with-exif.jpg');
+    await A.click('.section-head button:text-is("全不选")');
+    await A.click('.photo.selectable >> nth=0');
+    await A.click('.section-head button:has-text("删除")');
+    await A.click('.overlay:last-child .dialog button:text-is("删除")');
+    await A.waitForFunction(() => document.querySelectorAll('.photo').length === 2);
+    assert.equal(await A.locator('.section-head button:text-is("多选")').count(), 1);
+    await A.screenshot({ path: join(SHOTS, 'album-box.png') });
     assert.ok(await settle(A));
   });
 
@@ -356,8 +382,9 @@ try {
     await A.waitForFunction(() => ![...document.querySelectorAll('.tile-title')].some((e) => e.textContent === '美食'));
     assert.ok(await settle(A));
     const a = await album(A);
-    assert.equal(a.trash.length, 1);
-    assert.equal(a.trash[0].node.note, '一家很好吃的面馆');
+    const boxes = a.trash.filter((t) => t.kind === 'box');
+    assert.equal(boxes.length, 1);
+    assert.equal(boxes[0].node.note, '一家很好吃的面馆');
   });
 
   await step('删除需要确认；取消则不删除', async () => {
@@ -516,7 +543,7 @@ try {
     await M.waitForSelector('text=回收记录（删除的末级框与照片）');
     assert.match(await M.textContent('.admin-table'), /框“美食”/);
     await M.click('.admin-table button:text-is("恢复")');
-    await M.waitForSelector('text=没有回收记录');
+    await M.waitForFunction(() => !document.querySelector('.admin-table') || !document.querySelector('.admin-table').textContent.includes('框“美食”'));
     await M.click('button:text-is("开始检查")');
     await M.waitForSelector('text=相册引用的文件都存在');
     await M.screenshot({ path: join(SHOTS, 'admin.png'), fullPage: true });
@@ -569,7 +596,7 @@ try {
     await A.waitForSelector('.more-btn');
     assert.equal(await A.locator('.photo').count(), 60);
     await A.click('.more-btn');
-    await A.waitForFunction(() => document.querySelectorAll('.photo').length === 71);
+    await A.waitForFunction(() => document.querySelectorAll('.photo').length === 72);
     assert.equal(await A.locator('.more-btn').count(), 0);
     assert.ok(await settle(A));
     await A.click('button:text-is("结束编辑")');
