@@ -5,5 +5,12 @@
 export const CONFIG = {
   bucket: 'ourtrip-1497637272',
   region: 'ap-guangzhou',
-  encryptedCredentials: null, // 例如 { "v": 1, "kdf": "PBKDF2-SHA256", ... }
+  encryptedCredentials: {
+    v: 1,
+    kdf: 'PBKDF2-SHA256',
+    iter: 600000,
+    salt: 'Hb3rw9ilueSDXAe/8vF9oQ==',
+    iv: 'WteuCNwIy+8e3sVR',
+    ct: 'ND2XGpgS4HPoca6MLtU0uiVApMfN0Fb/TZy93rwfn/zT+dPE1blOyn8Y9Rla7gc98YYm5KrBcHnDJVzgz2+Bm0wQU0fOPVK5tg2Ku/+iWwIsPJXyYV6VSeaXQXReAsr3QFZ+GfzsDkNhKXFyTij7k9+M',
+  },
 };
