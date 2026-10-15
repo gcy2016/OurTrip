@@ -173,14 +173,13 @@ export function pathBBox(d) {
 }
 
 /**
- * 解析省级边界 SVG：<g id="provinces"> 内每个省一个 <path id data-name d>，<g id="jiuduanxian"> 为九段线。
+ * 解析省级边界 SVG：<g id="provinces"> 内每个省一个 <path id data-name d>；<g id="jiuduanxian">（九段线）按 PRD 不显示，忽略。
  * 按全称（或简称前缀）把路径对应到一级区域编号。返回清洗后的数据（只含坐标）与问题列表。
  */
 export function parseChinaSvg(svgText, map, names) {
   const text = String(svgText || '');
   const problems = [];
   const provinces = [];
-  const dashes = [];
   const gi = text.indexOf('id="jiuduanxian"');
   const re = /<path\b[^>]*>/g;
   let m;
@@ -189,8 +188,8 @@ export function parseChinaSvg(svgText, map, names) {
     const d = cleanPath(attr(tag, 'd'));
     if (!d) continue;
     const name = attr(tag, 'data-name');
-    if (gi >= 0 && m.index > gi) dashes.push(d);
-    else if (name) provinces.push({ name, d });
+    if (gi >= 0 && m.index > gi) continue;
+    if (name) provinces.push({ name, d });
   }
   const regions = {};
   const used = new Set();
@@ -207,18 +206,15 @@ export function parseChinaSvg(svgText, map, names) {
     regions[l1.id] = hit.d;
   }
   for (const p of provinces) if (!used.has(p)) problems.push(`地图中的“${p.name}”没有对应的一级区域`);
-  // 港澳台在全国地图上面积很小或在海上，地图外另加标注
+  // 港澳台：网页按形状大小决定是否画成小点（港澳），台湾作为普通区域显示
   const markers = map.level1.filter((l1) => MARKER_NAMES.test(l1.name) && regions[l1.id]).map((l1) => l1.id);
-  if (!dashes.length) problems.push('地图中没有九段线（id="jiuduanxian"）');
-  const all = [...Object.values(regions), ...dashes];
-  const box = bboxOf(all);
+  const box = bboxOf(Object.values(regions));
   const pad = Math.max(box.w, box.h) * 0.02;
   return {
     data: {
       format: MAP_FORMAT,
       viewBox: [box.x - pad, box.y - pad, box.w + pad * 2, box.h + pad * 2].map((v) => Math.round(v * 100) / 100),
       regions,
-      dashes,
       markers,
     },
     problems,

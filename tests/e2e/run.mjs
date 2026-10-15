@@ -447,7 +447,8 @@ try {
     await A.click('.dialog button:text-is("保存")');
     await A.waitForSelector('.lit-line:has-text("2023.05.01")');
     assert.ok(await settle(A));
-    assert.deepEqual((await album(A)).regionLit['A03-C01'], { date: '2023-05-01', manual: true });
+    const rl = (await album(A)).regionLit['A03-C01'];
+    assert.deepEqual([rl.date, rl.manual, typeof rl.at], ['2023-05-01', true, 'number']);
     await A.goto(`${BASE}#/r/A03`);
     assert.equal(await A.textContent('.tile:has(.tile-title:text-is("A03-C01")) .tile-date'), '2023.05.01 点亮');
     await A.goto(`${BASE}#/`);
@@ -696,7 +697,7 @@ try {
     const pv = await M.textContent('.admin-card:has(h3:text("预览"))');
     assert.match(pv, /区域名称 367 个/);
     assert.match(pv, /A07 重名省、A07-C02 重名市/);
-    assert.match(pv, /34 个一级区域已对应，含九段线/);
+    assert.match(pv, /34 个一级区域已对应（九段线不显示）/);
     await M.click('button:text-is("上传到存储桶")');
     await M.waitForSelector('text=已上传区域名称 367 个');
     await M.screenshot({ path: join(SHOTS, 'admin-names.png'), fullPage: true });
@@ -712,22 +713,36 @@ try {
     assert.equal(await A.textContent('.crumbs .current'), '重名省');
   });
 
-  await step('地图页：只读，按一级区域点亮着色；点击显示名称与点亮日期/未点亮；港澳台标注；九段线', async () => {
+  await step('地图页：横向铺满、只读着色；点击显示名称与日期；无九段线；台湾直接显示；港澳两个小点共用热区', async () => {
     await A.goto(`${BASE}#/`);
     await A.click('.entry-btn:has-text("地图")');
     await A.waitForSelector('svg.china-map path.prov');
     assert.equal(await A.locator('svg.china-map path.prov').count(), 34);
-    assert.equal(await A.locator('svg.china-map .dashes path').count(), 1);
-    assert.equal(await A.locator('svg.china-map .marker').count(), 3);
+    assert.equal(await A.locator('svg.china-map .dashes, svg.china-map .marker, svg.china-map text, svg.china-map line').count(), 0);
+    assert.equal(await A.locator('svg.china-map .dots .dot').count(), 2);
+    assert.equal(await A.evaluate(() => getComputedStyle(document.querySelector('.map-stage')).transform), 'none'); // 横屏不旋转
     const litL1 = await A.evaluate(() => window.__app.regions.level1.filter((id) => window.__app.lit.has(id)).sort());
     const litPaths = await A.$$eval('svg.china-map path.prov.lit', (els) => els.map((e) => e.dataset.id).sort());
     assert.deepEqual(litPaths, litL1);
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零三")');
     assert.equal(await A.textContent('.map-info'), '虚零三　2023.05.01 点亮');
-    await A.click('svg.china-map .marker[data-id="A09"] rect', { force: true });
+    // 台湾：普通区域，直接点击
+    await A.click('svg.china-map path.prov[data-id="A09"]', { force: true });
     await A.waitForSelector('.map-info:has-text("台湾")');
     assert.equal(await A.textContent('.map-info'), '台湾　未点亮');
+    // 港澳：点小点附近的热区，同时显示两地各自状态
+    const dotLit = await A.$$eval('svg.china-map .dots .dot', (els) => els.map((e) => [e.dataset.id, e.classList.contains('lit')]));
+    await A.click('svg.china-map .dots .hot', { force: true });
+    await A.waitForSelector('.map-info:has-text("香港")');
+    const lines = await A.$$eval('.map-info p', (els) => els.map((e) => e.textContent));
+    const expectLines = await A.evaluate((ids) => ids.map(([id]) => {
+      const app = window.__app;
+      const d = app.lit.has(id) ? app.litDate(id) : null;
+      return `${app.regionName(id)}　${d ? `${d.replace(/-/g, '.')} 点亮` : '暂未点亮'}`;
+    }), dotLit);
+    assert.deepEqual(lines, expectLines);
+    assert.deepEqual(dotLit.map(([, l]) => l), await A.evaluate((ids) => ids.map(([id]) => window.__app.lit.has(id)), dotLit));
     assert.equal(await A.locator('.toolbar, button:text-is("修改点亮时间")').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'map.png'), fullPage: true });
   });
@@ -743,14 +758,18 @@ try {
     });
     const cards = await A.$$eval('.tl-card', (els) => els.map((e) => ({ id: e.dataset.id, date: e.dataset.date, top: parseFloat(e.style.top) })));
     assert.equal(cards.length, expected);
-    assert.equal(cards[0].id, 'A03-C01');
-    assert.equal(cards[0].date, '2023-05-01');
+    // 倒序：最新在最上面，最早点亮的 A03-C01 在最下面
+    const lastCard = cards[cards.length - 1];
+    assert.equal(lastCard.id, 'A03-C01');
+    assert.equal(lastCard.date, '2023-05-01');
     const dates = cards.map((c) => c.date);
-    assert.deepEqual(dates, [...dates].sort());
+    assert.deepEqual(dates, [...dates].sort().reverse());
     const dots = await A.$$eval('.tl-dot', (els) => els.map((e) => parseFloat(e.style.top)));
-    // 2023-05-01 到下一个日期（今天）之间约每月 60px
-    const months = await A.evaluate((d) => (Date.parse(d[1]) - Date.parse(d[0])) / (30.44 * 86400000), [dates[0], dates[1]]);
-    assert.ok(Math.abs(dots[1] - dots[0] - months * 60) < 3, `${dots[1] - dots[0]} vs ${months * 60}`);
+    // 相邻两个日期之间约每月 60px
+    const n = dates.length;
+    const months = await A.evaluate((d) => (Date.parse(d[0]) - Date.parse(d[1])) / (30.44 * 86400000), [dates[n - 2], dates[n - 1]]);
+    assert.ok(Math.abs(dots[n - 1] - dots[n - 2] - months * 60) < 3, `${dots[n - 1] - dots[n - 2]} vs ${months * 60}`);
+    assert.ok(cards[0].top < 60); // 打开页面直接看到最新的
     assert.match(await A.textContent('.tl-card[data-id="A03-C01"] .tile-date'), /2023\.05\.01 点亮/);
     await A.screenshot({ path: join(SHOTS, 'timeline.png'), fullPage: true });
     await A.setViewportSize({ width: 375, height: 812 });
@@ -761,6 +780,13 @@ try {
     await A.goto(`${BASE}#/map`);
     await A.waitForSelector('svg.china-map path.prov');
     assert.equal(await A.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    // 竖屏：整页旋转 90° 横向展示，地图铺满屏幕
+    const r = await A.evaluate(() => {
+      const b = document.querySelector('svg.china-map').getBoundingClientRect();
+      return { w: b.width, h: b.height, t: getComputedStyle(document.querySelector('.map-stage')).transform };
+    });
+    assert.notEqual(r.t, 'none');
+    assert.ok(r.h > 600 && r.w > 300, JSON.stringify(r));
     await A.screenshot({ path: join(SHOTS, 'm-map.png') });
     await A.goto(`${BASE}#/`);
     await A.waitForSelector('.grid .tile');

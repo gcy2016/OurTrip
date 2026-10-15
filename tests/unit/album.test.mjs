@@ -365,16 +365,19 @@ test('点亮日期：首次点亮记操作日期，旧数据取最早上传日�
   const c2 = A.addBox(a, R, 'A03-C02');
   A.addNote(a, c2.id, 'y');
   A.syncLitTimes(a, R, day('2026-11-01'));
-  assert.deepEqual(a.regionLit['A03-C02'], { date: '2026-11-01', manual: false });
+  assert.deepEqual(a.regionLit['A03-C02'], { date: '2026-11-01', manual: false, at: day('2026-11-01') });
+  // 手动改日期保留点亮时刻（用于同一天排序）
+  A.setLitDate(a, R, 'A03-C02', '2026-10-30');
+  assert.deepEqual(a.regionLit['A03-C02'], { date: '2026-10-30', manual: true, at: day('2026-11-01') });
 });
 
-test('时间线布局：位置与时间成比例，同侧放不下顺延，同一天依次排列', async () => {
+test('时间线布局（倒序）：最新在上，位置与时间成比例，同侧放不下顺延，同一天依次排列', async () => {
   const { layoutTimeline, PX_PER_MONTH } = await import('../../js/views.js');
   const items = [
-    { id: 'a', date: '2024-01-01' },
-    { id: 'b', date: '2024-01-01' },
-    { id: 'c', date: '2024-01-01' },
-    { id: 'd', date: '2025-01-01' },
+    { id: 'a', date: '2025-01-01' },
+    { id: 'b', date: '2025-01-01' },
+    { id: 'c', date: '2025-01-01' },
+    { id: 'd', date: '2024-01-01' },
   ];
   const { items: out, height } = layoutTimeline(items, { cardH: 100 });
   assert.equal(out[0].y, out[1].y);

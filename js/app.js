@@ -151,6 +151,11 @@ const app = {
   litDate(id) {
     return A.litDateOf(this.litView, this.regions, id);
   },
+  /** 点亮操作的时刻（用于同一天多个区域排序）；旧数据没有记录时为 0 */
+  litAt(id) {
+    const r = this.litView.regionLit[id];
+    return (r && r.at) || 0;
+  },
   imageUrl(key) {
     return this.store.urlFor(key);
   },

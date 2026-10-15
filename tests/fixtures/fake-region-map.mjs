@@ -57,9 +57,14 @@ export async function encryptMap(map, password = FAKE_PASSWORD, iterations = 100
   };
 }
 
-/** 虚构地图：每个一级区域一个方块（6×6 网格），另有一段九段线 */
+/** 虚构地图：每个一级区域一个方块（6×6 网格），港澳两个很小的方块，另有一段九段线 */
 export function makeFakeSvg(map, { evil = false } = {}) {
+  const tiny = { A01: [20, 33], A02: [19.4, 33.2] };
   const paths = map.level1.map((l1, i) => {
+    if (tiny[l1.id]) {
+      const [x, y] = tiny[l1.id];
+      return `<path id="p${i}" data-name="${l1.name}" d="M${x},${y}L${x + 0.3},${y}L${x + 0.3},${y + 0.3}L${x},${y + 0.3}Z"/>`;
+    }
     const x = (i % 6) * 8;
     const y = Math.floor(i / 6) * 6;
     return `<path id="p${i}" data-name="${l1.name}" d="M${x},${y}L${x + 7},${y}L${x + 7},${y + 5}L${x},${y + 5}Z"/>`;

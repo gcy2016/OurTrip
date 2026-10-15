@@ -49,17 +49,17 @@ test('简称：去掉省/市/自治区/自治州/地区/盟及民族名，不超
   assert.ok(N.computeShortNames(long).problems.some((p) => p.includes('超过')));
 });
 
-test('地图：按名称对应到一级区域，含九段线；只保留坐标路径，过滤脚本与事件属性', () => {
+test('地图：按名称对应到一级区域，不含九段线；只保留坐标路径，过滤脚本与事件属性', () => {
   const map = makeFakeMap(anon);
   const { names } = N.computeShortNames(map);
   const r = N.parseChinaSvg(makeFakeSvg(map), map, names);
   assert.deepEqual(r.problems, []);
   assert.equal(Object.keys(r.data.regions).length, 34);
-  assert.equal(r.data.dashes.length, 1);
+  assert.equal(r.data.dashes, undefined);
   assert.deepEqual(r.data.markers.sort(), ['A01', 'A02', 'A09']);
-  // viewBox 要包含九段线（在原 viewBox 之外）
+  // 显示范围只按各省计算，不为九段线留空间
   const [, y, , hgt] = r.data.viewBox;
-  assert.ok(y + hgt >= 42);
+  assert.ok(y + hgt < 38);
   assert.ok(N.validMapData(r.data));
   assert.ok(!JSON.stringify(r.data).includes('script'));
 
@@ -69,5 +69,5 @@ test('地图：按名称对应到一级区域，含九段线；只保留坐标�
   assert.equal(N.validMapData({ ...r.data, regions: { A01: 'M0,0 url(javascript:alert(1))' } }), false);
 
   const noDash = N.parseChinaSvg(makeFakeSvg(map).replace(/<g id="jiuduanxian">.*<\/g>/, ''), map, names);
-  assert.ok(noDash.problems.some((p) => p.includes('九段线')));
+  assert.deepEqual(noDash.problems, []);
 });

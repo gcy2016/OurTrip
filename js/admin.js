@@ -426,7 +426,7 @@ function namesSection() {
       h('p', null, `区域名称 ${Object.keys(p.names).length} 个，全部不超过 ${N.MAX_NAME_LEN} 个字、没有重名。`),
       h('p', { class: 'dialog-hint' }, `一级区域：${l1}`),
       changed.length ? h('p', { class: 'dialog-hint' }, `为区分重名加了“省/市/州”：${changed.map((id) => `${id} ${p.names[id]}`).join('、')}`) : null,
-      p.mapData ? h('p', null, `地图：${Object.keys(p.mapData.regions).length} 个一级区域已对应，含九段线。`) : h('p', { class: 'muted' }, '未选择地图文件，本次只上传名称。'),
+      p.mapData ? h('p', null, `地图：${Object.keys(p.mapData.regions).length} 个一级区域已对应（九段线不显示）。`) : h('p', { class: 'muted' }, '未选择地图文件，本次只上传名称。'),
       p.problems.length ? h('ul', { class: 'error-text' }, p.problems.map((x) => h('li', null, x))) : null,
       h(
         'div',

@@ -1278,19 +1278,76 @@ textarea.input {
    地图
    ========================================================================= */
 
-.map-card {
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--card);
-  box-shadow: var(--shadow-card);
+/* 地图页横向展示：铺满整个屏幕；竖屏时整页旋转 90°（不锁定屏幕方向，也不提示旋转手机） */
+.map-stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  padding: 6px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+@media (orientation: portrait) {
+  .map-stage {
+    width: 100vh;
+    width: 100dvh;
+    height: 100vw;
+    transform-origin: top left;
+    transform: rotate(90deg) translateY(-100%);
+  }
+}
+
+/* 标题、说明浮在地图左上角/左下角的空白处，地图占满整个屏幕高度 */
+.map-head {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.map-head h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.map-head .sub {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.map-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
 }
 
 .china-map {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: 78vh;
+  height: 100%;
+}
+
+.map-side {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  max-width: 46%;
+  pointer-events: none;
 }
 
 .china-map .prov {
@@ -1311,58 +1368,48 @@ textarea.input {
   stroke-width: 0.3;
 }
 
-.china-map .dashes path {
-  fill: none;
-  stroke: #6b7a90;
-  stroke-width: 0.18;
-  stroke-linecap: round;
-}
-
-.china-map .marker {
+/* 港澳：原位置两个小点，点亮后发亮；外圈为共同的点击热区 */
+.china-map .dots {
   cursor: pointer;
   outline: none;
 }
 
-.china-map .marker line,
-.china-map .marker circle {
-  pointer-events: none;
+.china-map .dots .hot {
+  fill: rgba(47, 124, 246, 0.06);
+  stroke: rgba(47, 124, 246, 0.25);
+  stroke-width: 0.06;
 }
 
-.china-map .marker line {
-  stroke: #6b7a90;
-  stroke-width: 0.08;
-}
-
-.china-map .marker circle {
-  fill: #6b7a90;
-}
-
-.china-map .marker rect {
-  fill: var(--card-muted);
-  stroke: var(--line);
-  stroke-width: 0.08;
-}
-
-.china-map .marker.lit rect {
-  fill: #5fc79a;
-}
-
-.china-map .marker.sel rect {
+.china-map .dots.sel .hot {
+  fill: rgba(47, 124, 246, 0.14);
   stroke: var(--primary-strong);
-  stroke-width: 0.25;
+  stroke-width: 0.12;
 }
 
-.china-map .marker text {
-  fill: var(--text);
-  pointer-events: none;
+.china-map .dots .dot {
+  fill: #8a9ab3;
+  stroke: #ffffff;
+  stroke-width: 0.08;
+}
+
+.china-map .dots .dot.lit {
+  fill: #2fbf7f;
+  filter: drop-shadow(0 0 0.35px #2fbf7f);
 }
 
 .map-info {
-  margin: 12px 2px 6px;
-  font-size: 16px;
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  border-radius: var(--r-btn);
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 15px;
 }
 
-.map-info.lit strong {
+.map-info p {
+  margin: 0;
+}
+
+.map-info .lit strong {
   color: var(--ok);
 }
 

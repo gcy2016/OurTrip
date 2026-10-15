@@ -33,90 +33,125 @@ async function loadMap(app) {
   app.render();
 }
 
-function regionInfo(app, id) {
-  if (!id) return h('p', { class: 'map-info muted' }, '点地图上的区域查看点亮时间');
-  const lit = app.lit.has(id);
-  const date = lit ? app.litDate(id) : null;
-  return h(
-    'p',
-    { class: `map-info${lit ? ' lit' : ''}`, role: 'status' },
-    h('strong', null, app.regionName(id)),
-    lit ? (date ? `　${dotted(date)} 点亮` : '　已点亮') : '　未点亮'
-  );
+const HKMO = '__dots__'; // 香港、澳门共用的点击热区
+
+function litText(app, id, unlitText) {
+  if (!app.lit.has(id)) return unlitText;
+  const date = app.litDate(id);
+  return date ? `${dotted(date)} 点亮` : '已点亮';
+}
+
+function regionInfo(app, sel, dots) {
+  if (!sel) return h('div', { class: 'map-info muted' }, '点地图上的区域查看点亮时间');
+  // 港澳：同时显示两地各自的状态和时间
+  if (sel === HKMO) {
+    return h(
+      'div',
+      { class: 'map-info', role: 'status' },
+      dots.map((id) => h('p', { class: app.lit.has(id) ? 'lit' : '' }, h('strong', null, app.regionName(id)), `　${litText(app, id, '暂未点亮')}`))
+    );
+  }
+  return h('div', { class: 'map-info', role: 'status' }, h('p', { class: app.lit.has(sel) ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${litText(app, sel, '未点亮')}`));
+}
+
+/** 面积很小、在全国地图上看不清的区域（港澳）：在原位置画成小点。依据形状大小判断，不依赖名称 */
+function smallRegions(data, vw) {
+  return (data.markers || []).filter((id) => {
+    const d = data.regions[id];
+    if (!d) return false;
+    const b = pathBBox(d);
+    return Math.max(b.w, b.h) < vw * 0.02;
+  });
 }
 
 function drawMap(app, data) {
-  const [vx, vy, vw, vh] = data.viewBox;
-  const markers = (data.markers || []).filter((id) => data.regions[id]);
-  // 港澳台在地图右侧另加标注（引线指向实际位置）
-  const labelW = vw * 0.16;
-  const extra = markers.length ? labelW + vw * 0.05 : 0;
-  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw + extra} ${vh}`, class: 'china-map', role: 'img', 'aria-label': '已点亮区域地图' });
+  // 显示范围只按各省边界计算（不含九段线），尽量放大地图主体
+  const box = pathBBox(Object.values(data.regions).join(' '));
+  const pad = Math.max(box.w, box.h) * 0.015;
+  const vx = box.x - pad;
+  const vy = box.y - pad;
+  const vw = box.w + pad * 2;
+  const vh = box.h + pad * 2;
+  const dots = smallRegions(data, vw);
+  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map', role: 'img', 'aria-label': '已点亮区域地图' });
   const pick = (id) => {
     selected = id;
     app.render();
+  };
+  const bind = (el, id) => {
+    el.addEventListener('click', () => pick(id));
+    el.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && pick(id));
   };
   const g = svg('g', { class: 'provinces' });
   // 选中的区域最后画，描边不会被相邻区域盖住
   const entries = Object.entries(data.regions).sort((x, y) => (x[0] === selected) - (y[0] === selected));
   for (const [id, d] of entries) {
-    const p = svg('path', { d, class: `prov${app.lit.has(id) ? ' lit' : ''}${selected === id ? ' sel' : ''}`, 'data-id': id, tabindex: 0, role: 'button', 'aria-label': app.regionName(id) });
-    p.addEventListener('click', () => pick(id));
-    p.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && pick(id));
+    const dot = dots.includes(id);
+    const p = svg('path', {
+      d,
+      class: `prov${app.lit.has(id) ? ' lit' : ''}${selected === id ? ' sel' : ''}`,
+      'data-id': id,
+      tabindex: dot ? null : 0,
+      role: dot ? null : 'button',
+      'aria-label': dot ? null : app.regionName(id),
+    });
+    if (!dot) bind(p, id);
     g.appendChild(p);
   }
   root.appendChild(g);
-  const dg = svg('g', { class: 'dashes' });
-  for (const d of data.dashes || []) dg.appendChild(svg('path', { d }));
-  root.appendChild(dg);
 
-  if (markers.length) {
-    const lx = vx + vw + vw * 0.04;
-    const lh = vh * 0.06;
-    const pts = markers.map((id) => {
+  if (dots.length) {
+    // 港澳：原位置两个小点，点亮后发亮；两点附近一个共同的点击热区
+    const pts = dots.map((id) => {
       const b = pathBBox(data.regions[id]);
       return { id, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
     });
-    pts.sort((a, b) => a.cy - b.cy);
-    let lastY = -Infinity;
-    for (const pt of pts) {
-      const y = Math.max(pt.cy - lh / 2, lastY + lh * 1.3);
-      lastY = y;
-      const lit = app.lit.has(pt.id);
-      const mg = svg('g', { class: `marker${lit ? ' lit' : ''}${selected === pt.id ? ' sel' : ''}`, 'data-id': pt.id, tabindex: 0, role: 'button', 'aria-label': app.regionName(pt.id) });
-      mg.appendChild(svg('line', { x1: pt.cx, y1: pt.cy, x2: lx, y2: y + lh / 2 }));
-      mg.appendChild(svg('circle', { cx: pt.cx, cy: pt.cy, r: vw * 0.006 }));
-      mg.appendChild(svg('rect', { x: lx, y, width: labelW, height: lh, rx: lh * 0.3 }));
-      mg.appendChild(svg('text', { x: lx + labelW / 2, y: y + lh * 0.68, 'font-size': lh * 0.56, 'text-anchor': 'middle' }, app.regionName(pt.id)));
-      mg.addEventListener('click', () => pick(pt.id));
-      mg.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && pick(pt.id));
-      root.appendChild(mg);
-    }
+    const cx = pts.reduce((t, p) => t + p.cx, 0) / pts.length;
+    const cy = pts.reduce((t, p) => t + p.cy, 0) / pts.length;
+    const spread = Math.max(...pts.map((p) => Math.hypot(p.cx - cx, p.cy - cy)));
+    const r = Math.max(spread + vw * 0.012, vw * 0.022);
+    const hot = svg('g', { class: `dots${selected === HKMO ? ' sel' : ''}`, 'data-id': HKMO, tabindex: 0, role: 'button', 'aria-label': dots.map((id) => app.regionName(id)).join('、') });
+    hot.appendChild(svg('circle', { class: 'hot', cx, cy, r }));
+    for (const p of pts) hot.appendChild(svg('circle', { class: `dot${app.lit.has(p.id) ? ' lit' : ''}`, 'data-id': p.id, cx: p.cx, cy: p.cy, r: vw * 0.0055 }));
+    bind(hot, HKMO);
+    root.appendChild(hot);
   }
-  return root;
+  return { root, dots };
 }
 
 export function mapView(app) {
   if (mapState.status === 'idle') loadMap(app);
   const level1 = app.regions.level1;
   const litCount = level1.filter((id) => app.lit.has(id)).length;
-  const head = h('div', { class: 'page-head' }, h('h1', null, '地图'), h('p', { class: 'sub' }, `已点亮 ${litCount}/${level1.length} 个一级区域`));
+  const head = h(
+    'div',
+    { class: 'map-head' },
+    h('a', { class: 'btn btn-small', href: '#/' }, '‹ 返回'),
+    h('h1', null, '地图'),
+    h('span', { class: 'sub' }, `已点亮 ${litCount}/${level1.length} 个一级区域`)
+  );
   let body;
   if (mapState.status === 'loading' || mapState.status === 'idle') body = h('p', { class: 'muted' }, '正在载入地图…');
   else if (mapState.status === 'missing') body = h('div', { class: 'empty' }, '地图尚未上传。请用维护工具上传地图文件后再来查看。');
   else if (mapState.status === 'error') {
     body = h('div', { class: 'empty' }, `地图载入失败：${mapState.error}`, h('div', null, h('button', { class: 'btn btn-small', onclick: () => loadMap(app) }, '重试')));
   } else {
-    if (selected && !app.regions.byId.has(selected)) selected = null;
+    if (selected && selected !== HKMO && !app.regions.byId.has(selected)) selected = null;
+    const { root, dots } = drawMap(app, mapState.data);
     body = h(
       'div',
-      { class: 'map-wrap' },
-      h('div', { class: 'map-card' }, drawMap(app, mapState.data)),
-      regionInfo(app, selected),
-      h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
+      { class: 'map-body' },
+      h('div', { class: 'map-canvas' }, root),
+      h(
+        'div',
+        { class: 'map-side' },
+        regionInfo(app, selected, dots),
+        h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
+      )
     );
   }
-  return h('section', null, head, body);
+  // 横向展示：竖屏时整页旋转 90°，不依赖锁定屏幕方向，也不提示用户旋转手机
+  return h('section', { class: 'map-stage' }, head, body);
 }
 
 /** 退出登录或换账号时清空缓存的地图 */
@@ -137,15 +172,15 @@ function dayNumber(date) {
 }
 
 /**
- * 时间线布局（纯计算）：点在轴上的位置与真实时间成比例；卡片左右交替，
- * 同侧放不下时顺延到下方（用引线连到实际日期），同一天的多个区域按顺序依次排列。
+ * 时间线布局（纯计算）：items 按从上到下的顺序给出（最新的在最上面），点在轴上的位置与真实时间成比例；
+ * 卡片左右交替，同侧放不下时顺延到下方（用引线连到实际日期），同一天的多个区域依次排列。
  */
 export function layoutTimeline(items, { cardH, gap = 10, top = 24 }) {
   if (!items.length) return { items: [], height: 0, startDay: 0 };
   const startDay = dayNumber(items[0].date);
   const bottom = [top - gap, top - gap];
   const out = items.map((it, i) => {
-    const y = top + (dayNumber(it.date) - startDay) * PX_PER_DAY;
+    const y = top + Math.abs(startDay - dayNumber(it.date)) * PX_PER_DAY;
     const side = i % 2;
     const cardY = Math.max(y - cardH / 2, bottom[side] + gap, top);
     bottom[side] = cardY + cardH;
@@ -156,12 +191,13 @@ export function layoutTimeline(items, { cardH, gap = 10, top = 24 }) {
 }
 
 export function timelineView(app) {
+  // 倒序：最新点亮的在最上面，往下翻是更早的。同一天里后点亮的在上面（没有记录点亮时刻的旧数据按编号排）
   const items = litDateRegions(app.regions)
     .filter((id) => app.lit.has(id))
-    .map((id) => ({ id, date: app.litDate(id) }))
+    .map((id) => ({ id, date: app.litDate(id), at: app.litAt(id) }))
     .filter((x) => x.date)
-    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : 1));
-  const head = h('div', { class: 'page-head' }, h('h1', null, '时间线'), h('p', { class: 'sub' }, items.length ? `${items.length} 个区域 · ${dotted(items[0].date)} 起` : ''));
+    .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : b.at - a.at || (a.id < b.id ? -1 : 1)));
+  const head = h('div', { class: 'page-head' }, h('h1', null, '时间线'), h('p', { class: 'sub' }, items.length ? `${items.length} 个区域 · 最近 ${dotted(items[0].date)}` : ''));
   if (!items.length) return h('section', null, head, h('div', { class: 'empty' }, '还没有点亮的区域。'));
 
   const width = Math.min(document.documentElement.clientWidth || 360, 1200) - 40;
@@ -170,16 +206,16 @@ export function timelineView(app) {
   const box = h('div', { class: 'timeline', style: { height: `${Math.ceil(height)}px`, '--tl-card': `${cardW}px` } });
   box.appendChild(h('div', { class: 'tl-axis' }));
 
-  // 月份刻度；1 月标出年份
+  // 月份刻度（从最新往前）；1 月标出年份
   const last = laid[laid.length - 1];
   const [y0, m0] = items[0].date.split('-').map(Number);
-  for (let y = y0, m = m0; ; m++) {
-    if (m > 12) {
-      m = 1;
-      y++;
+  for (let y = y0, m = m0; ; m--) {
+    if (m < 1) {
+      m = 12;
+      y--;
     }
     const day = Math.round(Date.UTC(y, m - 1, 1) / DAY_MS);
-    const top = 24 + (day - startDay) * PX_PER_DAY;
+    const top = 24 + (startDay - day) * PX_PER_DAY;
     if (top > last.y + 1) break;
     if (top >= 24 - 1) box.appendChild(h('div', { class: `tl-tick${m === 1 ? ' year' : ''}`, style: { top: `${top}px` } }, h('span', null, m === 1 ? `${y}年` : `${m}月`)));
   }

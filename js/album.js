@@ -8,7 +8,7 @@
 //   photos: { [id]: { id, box, caption, exif, width, height, origName, origSize, uploadedAt } },
 //   regionCovers: { [regionId]: { photo, at } },   // at：用户设置封面的时间（旧数据可能是照片 id 字符串）
 //   trash:  [ { id, kind: 'box'|'photo', deletedAt, parent, region, order, node?, photos: [...] } ],
-//   regionLit: { [regionId]: { date: 'YYYY-MM-DD', manual } },   // 二级区域（及无二级的一级区域）的点亮日期
+//   regionLit: { [regionId]: { date: 'YYYY-MM-DD', manual, at } },   // 二级区域（及无二级的一级区域）的点亮日期；at 为点亮操作时刻（只用于同一天排序）
 //   colorDefaults: { site: color|null, regions: { [regionId]: color|null } }, // 新建框的默认背景色
 // }
 // parent 为固定区域编号（如 A03-C01）或另一个自定义框的 id。
@@ -659,7 +659,7 @@ export function syncLitTimes(album, regions, now = Date.now()) {
     for (const p of Object.values(album.photos)) {
       if (p.uploadedAt && p.uploadedAt < ts && regionOfNode(album, p.box) === rid) ts = p.uploadedAt;
     }
-    album.regionLit[rid] = { date: localDate(ts), manual: false };
+    album.regionLit[rid] = { date: localDate(ts), manual: false, at: now };
   }
 }
 
@@ -681,7 +681,7 @@ export function setLitDate(album, regions, regionId, date) {
   }
   if (!computeLit(album, regions).has(regionId)) throw new AlbumError('NOT_LIT', '这个区域还没有点亮');
   if (!isValidDate(date)) throw new AlbumError('BAD_DATE', '请输入正确的日期');
-  album.regionLit[regionId] = { date, manual: true };
+  album.regionLit[regionId] = { ...album.regionLit[regionId], date, manual: true };
 }
 
 // ---------- 回收（技术维护用） ----------
