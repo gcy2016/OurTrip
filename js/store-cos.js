@@ -4,26 +4,44 @@
 const TIMEOUT_MS = 60000;
 const URL_TTL_S = 3600;
 
+const OP_NAMES = {
+  getObject: '读取文件',
+  headObject: '检查文件',
+  putObject: '写入文件',
+  getBucket: '列出文件',
+  deleteObject: '删除文件',
+  listObjectVersions: '列出历史版本',
+  putObjectCopy: '恢复历史版本',
+};
+
 function promisify(cos, method, params) {
   return new Promise((resolve, reject) => {
-    cos[method](params, (err, data) => (err ? reject(normalizeError(err)) : resolve(data)));
+    cos[method](params, (err, data) => (err ? reject(normalizeError(err, method)) : resolve(data)));
   });
 }
 
-function normalizeError(err) {
+function normalizeError(err, method = '') {
   const status = err && (err.statusCode || (err.error && err.error.statusCode));
-  const e = new Error(describe(err, status));
+  const code = (err && (err.code || (err.error && (err.error.Code || err.error.code)))) || '';
+  const e = new Error(describe(status, code, OP_NAMES[method] || method));
   e.status = status || 0;
+  e.code = code;
   e.network = !status;
   e.raw = err;
   return e;
 }
 
-function describe(err, status) {
-  if (!status) return '网络连接失败或超时';
-  if (status === 403) return '没有访问权限（请检查子账号权限策略与 CORS 设置）';
-  if (status === 404) return '文件不存在';
-  return `云端返回错误（${status}）`;
+/** 报错里带上操作名和腾讯云错误码，便于定位是权限、密钥还是跨域问题 */
+function describe(status, code, op) {
+  const where = op ? `（${op}${code ? `，${code}` : ''}）` : code ? `（${code}）` : '';
+  if (!status) return `网络连接失败或超时${where}`;
+  if (status === 403) {
+    if (/InvalidAccessKeyId|SignatureDoesNotMatch/i.test(code)) return `子账号密钥无效或已更换${where}`;
+    if (/RequestTimeTooSkewed/i.test(code)) return `设备时间不准，请校准手机/电脑时间后重试${where}`;
+    return `没有访问权限${where}，请检查子账号权限策略`;
+  }
+  if (status === 404) return `文件不存在${where}`;
+  return `云端返回错误 ${status}${where}`;
 }
 
 export class CosStore {
@@ -174,7 +192,7 @@ export class CosStore {
     if (hit && hit.expires > Date.now()) return hit.url;
     const url = await new Promise((resolve, reject) => {
       this.cos.getObjectUrl({ ...this.base(key), Sign: true, Expires: URL_TTL_S }, (err, data) =>
-        err ? reject(normalizeError(err)) : resolve(data.Url)
+        err ? reject(normalizeError(err, 'getObjectUrl')) : resolve(data.Url)
       );
     });
     this.urls.set(key, { url, expires: Date.now() + (URL_TTL_S - 300) * 1000 });
