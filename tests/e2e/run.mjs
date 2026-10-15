@@ -68,7 +68,7 @@ const ctx = await browser.newContext({
 const geoRequests = [];
 await ctx.route('**/js/config.js', async (route) => {
   const res = await route.fetch();
-  const body = (await res.text()).replace("tencentMapKey: ''", "tencentMapKey: 'TESTKEY'");
+  const body = (await res.text()).replace(/tencentMapKey: '[^']*'/, "tencentMapKey: 'TESTKEY'");
   await route.fulfill({ response: res, body });
 });
 await ctx.route('https://apis.map.qq.com/**', async (route) => {

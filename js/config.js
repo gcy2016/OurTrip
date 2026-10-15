@@ -4,7 +4,7 @@
 // 三项都填好之前，网页会提示“尚未配置云端存储”，可以先进入演示模式体验。
 // tencentMapKey：腾讯位置服务 Key（用于把定位坐标转成中文地址；需在控制台设置域名白名单），留空则不启用。
 export const CONFIG = {
-  tencentMapKey: '',
+  tencentMapKey: 'MHIBZ-WQI6Q-QZW5L-24ROO-T5Q4O-WHBCL',
   bucket: 'ourtrip-1497637272',
   region: 'ap-guangzhou',
   encryptedCredentials: {
