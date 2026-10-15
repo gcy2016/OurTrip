@@ -9,12 +9,14 @@ import { MemoryStore } from './store-memory.js';
 import { CosStore } from './store-cos.js';
 import { Session, LOCK_RENEW_EVERY, HEARTBEAT_EVERY } from './session.js';
 import { AlbumSync } from './sync.js';
-import { h, clear, toast, confirmDialog, alertDialog, actionSheet, promptDialog, busy, copyToClipboard, formatTime } from './ui.js';
+import { h, clear, dialog, toast, confirmDialog, alertDialog, actionSheet, promptDialog, busy, copyToClipboard, formatTime } from './ui.js';
 import { openUploader, thumbKey, photoKey } from './upload.js';
 import { openViewer } from './viewer.js';
 import { batchDelete, batchDownload } from './photo-batch.js';
 import * as B from './boxes.js';
 import { appleMapsUrl, formatCoords, copyText, hasCoords } from './maps.js';
+import { NAMES_KEY } from './region-names.js';
+import { mapView, timelineView, resetViews } from './views.js';
 
 const DEMO_PASSWORD = 'demo1234';
 const POLL_EVERY = 20000;
@@ -141,8 +143,13 @@ const app = {
     lsSet(LS_CLIPBOARD, JSON.stringify(tpl));
     this.render();
   },
+  names: {}, // 区域简称：登录后从存储桶 meta/region-names.json 读取，读不到时显示编号
   regionName(id) {
-    return (REGION_DISPLAY[id] && REGION_DISPLAY[id].name) || id;
+    return (REGION_DISPLAY[id] && REGION_DISPLAY[id].name) || this.names[id] || id;
+  },
+  /** 区域的点亮日期（YYYY-MM-DD）；一级区域取下属二级区域中最早的日期 */
+  litDate(id) {
+    return A.litDateOf(this.litView, this.regions, id);
   },
   imageUrl(key) {
     return this.store.urlFor(key);
@@ -177,6 +184,7 @@ const app = {
     });
   },
 };
+app.regionTile = regionTile;
 window.__app = app; // 便于调试与自动化测试
 
 const root = document.getElementById('app');
@@ -258,8 +266,14 @@ async function startSession(secret) {
       app.pendingSecret = secret;
       return renderNow();
     }
-    app.sync = new AlbumSync({ store: app.store, session: app.session, onChange: () => app.render() });
+    app.sync = new AlbumSync({
+      store: app.store,
+      session: app.session,
+      onChange: () => app.render(),
+      afterMutate: (a) => A.syncLitTimes(a, app.regions, app.store.now()),
+    });
     await app.sync.load();
+    await loadNames();
     app.lock = await app.session.lockStatus();
     app.mode = 'main';
     startTimers();
@@ -269,6 +283,16 @@ async function startSession(secret) {
     app.errorText = `无法连接云端：${e.message || e}`;
     app.pendingSecret = secret;
     renderNow();
+  }
+}
+
+async function loadNames() {
+  try {
+    const rec = await app.store.getJSON(NAMES_KEY);
+    const names = rec && rec.data && rec.data.names;
+    app.names = names && typeof names === 'object' ? names : {};
+  } catch {
+    app.names = {}; // 读不到名称时退回显示编号，不影响使用
   }
 }
 
@@ -380,6 +404,8 @@ async function logout() {
   app.session = null;
   app.sync = null;
   app.store = null;
+  app.names = {};
+  resetViews();
   app.mode = 'login';
   renderNow();
 }
@@ -407,7 +433,10 @@ document.addEventListener('visibilitychange', () => {
 
 function parseRoute() {
   const m = /^#\/(r|b)\/([\w-]+)$/.exec(location.hash);
-  app.route = m ? { kind: m[1] === 'r' ? 'region' : 'box', id: m[2] } : { kind: 'home', id: null };
+  if (m) app.route = { kind: m[1] === 'r' ? 'region' : 'box', id: m[2] };
+  else if (location.hash === '#/map') app.route = { kind: 'map', id: null };
+  else if (location.hash === '#/timeline') app.route = { kind: 'timeline', id: null };
+  else app.route = { kind: 'home', id: null };
 }
 
 window.addEventListener('hashchange', () => {
@@ -522,9 +551,14 @@ function errorView() {
 function mainView() {
   const album = app.sync.album;
   app.lit = A.computeLit(album, app.regions);
+  // 点亮日期的显示视图：旧数据还没有记录日期时按规则补算（只用于显示，不写回；下次修改时才正式记录）
+  app.litView = { ...album, regionLit: { ...album.regionLit } };
+  A.syncLitTimes(app.litView, app.regions, app.store.now());
   let page;
   const { kind, id } = app.route;
-  if (kind === 'region' && app.regions.byId.has(id)) {
+  if (kind === 'map') page = mapView(app);
+  else if (kind === 'timeline') page = timelineView(app);
+  else if (kind === 'region' && app.regions.byId.has(id)) {
     page = isContentRegion(app.regions, id) ? containerView(id) : level1View(id);
   } else if (kind === 'box' && album.nodes[id]) {
     page = containerView(id);
@@ -606,6 +640,8 @@ async function menu() {
   if (v === 'refresh') {
     if (app.sync.dirty) return toast('还有未保存的修改，请先等待保存完成', 'warn');
     await app.sync.load();
+    await loadNames();
+    resetViews();
     app.lock = await app.session.lockStatus();
     toast('已刷新');
   }
@@ -624,6 +660,9 @@ async function menu() {
 function breadcrumb() {
   const { kind, id } = app.route;
   if (kind === 'home') return null;
+  if (kind === 'map' || kind === 'timeline') {
+    return h('nav', { class: 'crumbs', 'aria-label': '位置' }, h('a', { href: '#/' }, '全部区域'), h('span', { class: 'sep' }, '/'), h('span', { class: 'current' }, kind === 'map' ? '地图' : '时间线'));
+  }
   const album = app.sync.album;
   const chain = [];
   let cur = id;
@@ -713,7 +752,14 @@ function isDark(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.6;
 }
 
-function tile({ href, title, sub, color, bg: bgSpec, lit, badge, extra, onclick, selected, region }) {
+/** 名称的大致宽度（汉字按 1、字母数字按 0.6），用于区域名称按长度缩小字号 */
+function nameWidth(s) {
+  let w = 0;
+  for (const ch of String(s)) w += /[\x00-\xff]/.test(ch) ? 0.6 : 1;
+  return Math.max(2, w);
+}
+
+function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, onclick, selected, region }) {
   const bg = h('div', { class: 'tile-bg', style: { background: color } });
   const img = backgroundImage(bgSpec);
   if (img) bg.appendChild(img);
@@ -728,14 +774,20 @@ function tile({ href, title, sub, color, bg: bgSpec, lit, badge, extra, onclick,
       onclick,
     },
     bg,
-    h('div', { class: 'tile-text' }, h('div', { class: 'tile-title' }, title), sub ? h('div', { class: 'tile-sub' }, sub) : null),
+    h(
+      'div',
+      { class: 'tile-text' },
+      h('div', { class: 'tile-title', style: region ? { '--name-w': String(nameWidth(title)) } : null }, title),
+      sub ? h('div', { class: 'tile-sub' }, sub) : null,
+      sub2 ? h('div', { class: 'tile-sub tile-date' }, sub2) : null
+    ),
     badge ? h('span', { class: 'tile-badge' }, badge) : null,
     lit ? h('span', { class: 'lit-mark', title: '已点亮' }, '已点亮') : null,
     extra || null
   );
 }
 
-function regionTile(id) {
+function regionTile(id, { href } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
   const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id]);
@@ -744,10 +796,12 @@ function regionTile(id) {
     const litKids = r.children.filter((c) => app.lit.has(c)).length;
     sub = `已点亮 ${litKids}/${r.children.length}`;
   }
+  const date = app.lit.has(id) ? app.litDate(id) : null;
   return tile({
-    href: `#/r/${id}`,
+    href: href || `#/r/${id}`,
     title: app.regionName(id),
     sub,
+    sub2: date ? `${date.replace(/-/g, '.')} 点亮` : '',
     color: COLORS.region,
     bg,
     region: true,
@@ -762,7 +816,13 @@ function homeView() {
     'section',
     null,
     h('div', { class: 'page-head' }, h('h1', null, '全部区域'), h('p', { class: 'sub' }, `已点亮 ${litCount}/${total} 个一级区域`)),
-    h('div', { class: 'grid' }, app.regions.level1.map(regionTile))
+    h(
+      'div',
+      { class: 'entry-row' },
+      h('a', { class: 'entry-btn', href: '#/map' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🗺️'), '地图'),
+      h('a', { class: 'entry-btn', href: '#/timeline' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🕒'), '时间线')
+    ),
+    h('div', { class: 'grid' }, app.regions.level1.map((id) => regionTile(id)))
   );
 }
 
@@ -779,13 +839,52 @@ function level1View(id) {
       h('p', { class: 'sub' }, `已点亮 ${litKids}/${r.children.length} 个二级区域`),
       regionCoverTools(id)
     ),
-    h('div', { class: 'grid' }, r.children.map(regionTile))
+    h('div', { class: 'grid' }, r.children.map((c) => regionTile(c)))
   );
 }
 
 function regionCoverTools(id) {
   if (!app.editing || !A.hasUserCover(app.sync.album, id)) return null;
   return h('button', { class: 'btn btn-small', onclick: () => app.mutate((a) => A.clearCover(a, id)) }, '清除我设置的封面');
+}
+
+/** 内容区域（二级区域或无二级的一级区域）页头：点亮状态与日期；编辑时可修改日期 */
+function litLine(id) {
+  if (!app.lit.has(id)) return h('p', { class: 'sub' }, '还没有旅行内容');
+  const date = app.litDate(id);
+  return h(
+    'p',
+    { class: 'sub lit-line' },
+    `已点亮${date ? ` · ${date.replace(/-/g, '.')}` : ''}`,
+    app.editing ? h('button', { class: 'btn btn-small', onclick: () => editLitDate(id) }, '修改点亮时间') : null
+  );
+}
+
+async function editLitDate(id) {
+  const v = await dialog(
+    (close) => {
+      const input = h('input', { class: 'input', type: 'date', max: A.localDate(app.store.now()) });
+      input.value = app.litDate(id) || '';
+      const err = h('p', { class: 'error-text', role: 'status' });
+      const ok = () => {
+        if (!A.isValidDate(input.value)) {
+          err.textContent = '请选择日期';
+          return;
+        }
+        close(input.value);
+      };
+      return h(
+        'div',
+        null,
+        h('p', { class: 'dialog-hint' }, '第一次点亮时自动记为当天，可以改成实际去的日期（精确到天）。取消点亮后日期清空，再次点亮时重新记录。'),
+        input,
+        err,
+        h('div', { class: 'dialog-actions' }, h('button', { class: 'btn', onclick: () => close() }, '取消'), h('button', { class: 'btn btn-primary', onclick: ok }, '保存'))
+      );
+    },
+    { title: `修改“${app.regionName(id)}”的点亮时间` }
+  );
+  if (v) app.mutate((a) => A.setLitDate(a, app.regions, id, v));
 }
 
 function boxTile(node) {
@@ -797,8 +896,8 @@ function boxTile(node) {
   else {
     const parts = [];
     if (node.photos.length) parts.push(`${node.photos.length} 张`);
-    if (node.note.trim()) parts.push('备注');
-    if (A.hasLocation(node.location)) parts.push('地点');
+    if (A.hasNotes(node)) parts.push(node.notes.length > 1 ? `${node.notes.length} 条备注` : '备注');
+    if (A.hasLocations(node)) parts.push(node.locations.length > 1 ? `${node.locations.length} 个地点` : '地点');
     sub = parts.join(' · ');
   }
   const selecting = app.selecting;
@@ -852,7 +951,7 @@ function containerView(id) {
     'div',
     { class: 'page-head' },
     h('h1', null, isBox ? node.title : app.regionName(id), node && node.type ? h('span', { class: 'type-badge' }, node.type) : null),
-    !isBox ? h('p', { class: 'sub' }, app.lit.has(id) ? '已点亮' : '还没有旅行内容') : null,
+    !isBox ? litLine(id) : null,
     isBox && app.editing ? h('button', { class: 'btn btn-small', onclick: () => B.boxActions(app, id) }, '本框操作 ⋯') : null,
     !isBox ? regionCoverTools(id) : null
   );
@@ -1072,65 +1171,128 @@ function contentView(node, { photosOnly = false } = {}) {
   }
   if (photosOnly) return wrap;
 
-  // 备注
+  // 备注（可以有多条，逐条添加、修改、删除）
   wrap.appendChild(
     h(
       'div',
       { class: 'section-head' },
-      h('h2', null, '备注'),
+      h('h2', null, `备注${node.notes.length > 1 ? `（${node.notes.length}）` : ''}`),
       editing
         ? h(
-            'button',
-            {
-              class: 'btn btn-small',
-              onclick: async () => {
-                const v = await promptDialog('备注', { value: node.note, multiline: true });
-                if (v !== undefined) app.mutate((a) => A.setNote(a, node.id, v));
+            'div',
+            { class: 'section-actions' },
+            h(
+              'button',
+              {
+                class: 'btn btn-small',
+                onclick: async () => {
+                  const v = await promptDialog('添加备注', { multiline: true, okLabel: '添加' });
+                  if (v !== undefined && v.trim()) app.mutate((a) => A.addNote(a, node.id, v));
+                },
               },
-            },
-            '编辑'
+              '+ 添加备注'
+            )
           )
         : null
     )
   );
-  wrap.appendChild(node.note.trim() ? h('p', { class: 'note' }, node.note) : h('p', { class: 'muted' }, '暂无备注'));
+  if (node.notes.length) {
+    wrap.appendChild(
+      h(
+        'ul',
+        { class: 'item-list notes' },
+        node.notes.map((n) =>
+          h(
+            'li',
+            { class: 'item' },
+            h('p', { class: 'note' }, n.text),
+            editing
+              ? h(
+                  'div',
+                  { class: 'item-actions' },
+                  h(
+                    'button',
+                    {
+                      class: 'btn btn-small',
+                      onclick: async () => {
+                        const v = await promptDialog('修改备注', { value: n.text, multiline: true, hint: '清空内容后保存即删除这条备注。' });
+                        if (v !== undefined) app.mutate((a) => A.updateNote(a, node.id, n.id, v));
+                      },
+                    },
+                    '修改'
+                  ),
+                  h(
+                    'button',
+                    {
+                      class: 'btn btn-small btn-danger-text',
+                      onclick: async () => {
+                        if (await confirmDialog('删除这条备注？', { danger: true, okLabel: '删除' })) app.mutate((a) => A.deleteNote(a, node.id, n.id));
+                      },
+                    },
+                    '删除'
+                  )
+                )
+              : null
+          )
+        )
+      )
+    );
+  } else wrap.appendChild(h('p', { class: 'muted' }, '暂无备注'));
 
-  // 地点
+  // 地点（可以有多个，逐个添加、修改、删除）
   wrap.appendChild(
     h(
       'div',
       { class: 'section-head' },
-      h('h2', null, '地点'),
-      editing ? h('button', { class: 'btn btn-small', onclick: () => B.locationDialog(app, node.id) }, '编辑') : null
+      h('h2', null, `地点${node.locations.length > 1 ? `（${node.locations.length}）` : ''}`),
+      editing ? h('div', { class: 'section-actions' }, h('button', { class: 'btn btn-small', onclick: () => B.locationDialog(app, node.id) }, '+ 添加地点')) : null
     )
   );
-  const loc = node.location;
-  if (A.hasLocation(loc)) {
-    const apple = appleMapsUrl(loc, node.title);
+  if (node.locations.length) {
     wrap.appendChild(
       h(
-        'div',
-        { class: 'location' },
-        loc.address ? h('p', { class: 'note' }, loc.address) : null,
-        hasCoords(loc) ? h('p', { class: 'muted' }, `坐标：${formatCoords(loc)}`) : null,
-        h(
-          'div',
-          { class: 'map-links' },
-          apple ? h('a', { class: 'btn btn-small btn-primary', href: apple, target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中打开') : null,
-          copyText(loc)
-            ? h(
-                'button',
-                {
-                  class: 'btn btn-small',
-                  onclick: async () => toast((await copyToClipboard(copyText(loc))) ? '已复制地址/坐标' : '复制失败，请长按手动复制', 'ok'),
-                },
-                '复制地址/坐标'
-              )
-            : null
-        ),
-        h('p', { class: 'dialog-hint' }, '地图会在新页面打开，相册页面保持不变。建议用 Safari 打开相册，点按后可直接跳转到 Apple 地图 App。')
+        'ul',
+        { class: 'item-list' },
+        node.locations.map((loc) => {
+          const apple = appleMapsUrl(loc, node.title);
+          return h(
+            'li',
+            { class: 'item location' },
+            loc.address ? h('p', { class: 'note' }, loc.address) : null,
+            hasCoords(loc) ? h('p', { class: 'muted' }, `坐标：${formatCoords(loc)}`) : null,
+            h(
+              'div',
+              { class: 'map-links' },
+              apple ? h('a', { class: 'btn btn-small btn-primary', href: apple, target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中打开') : null,
+              copyText(loc)
+                ? h(
+                    'button',
+                    {
+                      class: 'btn btn-small',
+                      onclick: async () => toast((await copyToClipboard(copyText(loc))) ? '已复制地址/坐标' : '复制失败，请长按手动复制', 'ok'),
+                    },
+                    '复制地址/坐标'
+                  )
+                : null,
+              editing ? h('button', { class: 'btn btn-small', onclick: () => B.locationDialog(app, node.id, loc.id) }, '修改') : null,
+              editing
+                ? h(
+                    'button',
+                    {
+                      class: 'btn btn-small btn-danger-text',
+                      onclick: async () => {
+                        if (await confirmDialog('删除这个地点（地址和坐标）？', { danger: true, okLabel: '删除' })) app.mutate((a) => A.deleteLocation(a, node.id, loc.id));
+                      },
+                    },
+                    '删除'
+                  )
+                : null
+            )
+          );
+        })
       )
     );
+    wrap.appendChild(h('p', { class: 'dialog-hint' }, '地图会在新页面打开，相册页面保持不变。建议用 Safari 打开相册，点按后可直接跳转到 Apple 地图 App。'));
   } else {
     wrap.appendChild(h('p', { class: 'muted' }, '暂无地点'));
   }

@@ -28,8 +28,9 @@ function writeDraft(d) {
 }
 
 export class AlbumSync {
-  constructor({ store, session, onChange }) {
+  constructor({ store, session, onChange, afterMutate }) {
     this.store = store;
+    this.afterMutate = afterMutate || (() => {});
     this.session = session;
     this.onChange = onChange || (() => {});
     this.album = emptyAlbum();
@@ -92,6 +93,7 @@ export class AlbumSync {
     const snapshot = JSON.stringify(this.album);
     try {
       const result = fn(this.album);
+      this.afterMutate(this.album);
       this.dirty = true;
       writeDraft({ baseEtag: this.etag, album: this.album, at: Date.now() });
       this.schedule();

@@ -1162,3 +1162,304 @@ textarea.input {
     font-size: 19px;
   }
 }
+
+/* =========================================================================
+   区域名称大字号：最大为方框高度的 1/4，名称越长字越小，最多两行
+   ========================================================================= */
+
+.tile.region {
+  container-type: size;
+}
+
+.tile.region .tile-title {
+  font-size: min(25cqh, calc((100cqw - 28px) / (var(--name-w, 2) * 1.1)));
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-break: break-all;
+}
+
+.tile.region .tile-sub {
+  margin-top: 2px;
+}
+
+.tile-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.lit-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* 首页入口：地图、时间线 */
+.entry-row {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.entry-btn {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 260px;
+  min-height: 52px;
+  padding: 10px 16px;
+  border: 1px solid var(--primary-border);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--primary-strong);
+  font-size: 17px;
+  font-weight: 650;
+  text-decoration: none;
+  box-shadow: var(--shadow-card);
+}
+
+.entry-btn:active {
+  transform: scale(0.985);
+}
+
+.entry-icon {
+  font-size: 20px;
+}
+
+/* 多条备注、地点 */
+.item-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.item-list .item {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  background: var(--card);
+}
+
+.item-list .item .note {
+  margin: 0 0 6px;
+}
+
+.item-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* =========================================================================
+   地图
+   ========================================================================= */
+
+.map-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.china-map {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+}
+
+.china-map .prov {
+  fill: var(--card-muted);
+  stroke: #ffffff;
+  stroke-width: 0.12;
+  stroke-linejoin: round;
+  cursor: pointer;
+  outline: none;
+}
+
+.china-map .prov.lit {
+  fill: #5fc79a;
+}
+
+.china-map .prov.sel {
+  stroke: var(--primary-strong);
+  stroke-width: 0.3;
+}
+
+.china-map .dashes path {
+  fill: none;
+  stroke: #6b7a90;
+  stroke-width: 0.18;
+  stroke-linecap: round;
+}
+
+.china-map .marker {
+  cursor: pointer;
+  outline: none;
+}
+
+.china-map .marker line,
+.china-map .marker circle {
+  pointer-events: none;
+}
+
+.china-map .marker line {
+  stroke: #6b7a90;
+  stroke-width: 0.08;
+}
+
+.china-map .marker circle {
+  fill: #6b7a90;
+}
+
+.china-map .marker rect {
+  fill: var(--card-muted);
+  stroke: var(--line);
+  stroke-width: 0.08;
+}
+
+.china-map .marker.lit rect {
+  fill: #5fc79a;
+}
+
+.china-map .marker.sel rect {
+  stroke: var(--primary-strong);
+  stroke-width: 0.25;
+}
+
+.china-map .marker text {
+  fill: var(--text);
+  pointer-events: none;
+}
+
+.map-info {
+  margin: 12px 2px 6px;
+  font-size: 16px;
+}
+
+.map-info.lit strong {
+  color: var(--ok);
+}
+
+.map-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.legend::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: var(--card-muted);
+  vertical-align: -1px;
+}
+
+.legend.lit::before {
+  background: #5fc79a;
+}
+
+/* =========================================================================
+   时间线：竖向轴，距离与真实时间成比例（约每月 60px）
+   ========================================================================= */
+
+.timeline {
+  position: relative;
+  margin: 8px 0 24px;
+}
+
+.tl-axis {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(var(--lit-from), var(--primary-border));
+  border-radius: 2px;
+}
+
+.tl-tick {
+  position: absolute;
+  left: 50%;
+  width: 8px;
+  height: 1px;
+  margin-left: -4px;
+  background: var(--line);
+}
+
+.tl-tick span {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 3px;
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 10px;
+  line-height: 14px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.tl-tick.year {
+  width: 14px;
+  margin-left: -7px;
+  height: 2px;
+  background: var(--primary-border);
+}
+
+.tl-tick.year span {
+  font-weight: 650;
+  color: var(--primary-strong);
+}
+
+.tl-dot {
+  position: absolute;
+  left: 50%;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 1px 4px rgba(47, 124, 246, 0.4);
+}
+
+.tl-link {
+  position: absolute;
+  height: 1px;
+  background: var(--primary-border);
+  transform-origin: 0 0;
+}
+
+.tl-card {
+  position: absolute;
+  width: var(--tl-card, 140px);
+}
+
+.tl-card.left {
+  right: calc(50% + 22px);
+}
+
+.tl-card.right {
+  left: calc(50% + 22px);
+}
+
+.tl-card .tile {
+  box-shadow: var(--shadow-card);
+}

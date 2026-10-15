@@ -32,7 +32,7 @@ test('框可无限嵌套；有子框的框不能放内容，有内容的框不�
 
   const outer = A.addBox(a, R, 'A03-C01', { title: '外层' });
   A.addBox(a, R, outer.id, { title: '内层' });
-  assert.throws(() => A.setNote(a, outer.id, 'x'), { code: 'HAS_CHILDREN' });
+  assert.throws(() => A.addNote(a, outer.id, 'x'), { code: 'HAS_CHILDREN' });
   assert.throws(() => A.addPhotos(a, outer.id, [photo('p2')]), { code: 'HAS_CHILDREN' });
 });
 
@@ -40,13 +40,13 @@ test('文字备注、地址都算旅行内容，会点亮二级区域及其一�
   const a = A.emptyAlbum();
   const b = A.addBox(a, R, 'A05-C02', { title: '只有标题' });
   assert.equal(A.computeLit(a, R).size, 0);
-  A.setNote(a, b.id, '好吃');
+  const n = A.addNote(a, b.id, '好吃');
   assert.deepEqual([...A.computeLit(a, R)].sort(), ['A05', 'A05-C02']);
-  A.setNote(a, b.id, '   ');
+  A.updateNote(a, b.id, n.id, '   ');
   assert.equal(A.computeLit(a, R).size, 0);
-  A.setLocation(a, b.id, { address: '某路 1 号' });
+  const l = A.addLocation(a, b.id, { address: '某路 1 号' });
   assert.ok(A.computeLit(a, R).has('A05-C02'));
-  A.setLocation(a, b.id, { address: '' });
+  A.updateLocation(a, b.id, l.id, { address: '' });
   assert.equal(A.computeLit(a, R).size, 0);
 
   const c = A.addBox(a, R, 'A01', { title: '直达' });
@@ -59,7 +59,7 @@ test('点亮随内容删除而取消', () => {
   const b = A.addBox(a, R, 'A04-C01');
   A.addPhotos(a, b.id, [photo('p1')]);
   const b2 = A.addBox(a, R, 'A04-C02');
-  A.setNote(a, b2.id, 'x');
+  A.addNote(a, b2.id, 'x');
   assert.deepEqual([...A.computeLit(a, R)].sort(), ['A04', 'A04-C01', 'A04-C02']);
   A.deletePhoto(a, 'p1');
   assert.deepEqual([...A.computeLit(a, R)].sort(), ['A04', 'A04-C02']);
@@ -127,8 +127,8 @@ test('复制粘贴：保留结构、标题、类型、颜色，清空旅行内�
   const al = A.addBox(a, R, trip.id, { title: '相册', type: '相册' });
   const food = A.addBox(a, R, trip.id, { title: '美食', type: '美食' });
   A.addPhotos(a, al.id, [photo('p1')]);
-  A.setNote(a, food.id, '面条');
-  A.setLocation(a, food.id, { address: 'x', lat: 1, lng: 2 });
+  A.addNote(a, food.id, '面条');
+  A.addLocation(a, food.id, { address: 'x', lat: 1, lng: 2 });
   A.setCover(a, R, trip.id, 'p1');
   const tpl = A.copyTemplate(a, trip.id);
   const rootId = A.pasteTemplate(a, R, tpl, 'A07-C03');
@@ -151,7 +151,7 @@ test('移动：可跨区域，禁止移入自身或后代，禁止移入有内�
   const p = A.addBox(a, R, 'A03-C01', { title: 'p' });
   const c = A.addBox(a, R, p.id, { title: 'c' });
   const leaf = A.addBox(a, R, 'A03-C01', { title: 'leaf' });
-  A.setNote(a, leaf.id, 'x');
+  A.addNote(a, leaf.id, 'x');
   assert.throws(() => A.moveBox(a, R, p.id, c.id), { code: 'CYCLE' });
   assert.throws(() => A.moveBox(a, R, p.id, p.id), { code: 'CYCLE' });
   assert.throws(() => A.moveBox(a, R, p.id, leaf.id), { code: 'HAS_CONTENT' });
@@ -230,8 +230,8 @@ test('相册框：名称固定、只能放照片、不能有子框，复制模�
   assert.equal(al.title, '相册');
   assert.equal(A.isAlbumBox(al), true);
   assert.throws(() => A.updateBox(a, al.id, { title: '改名' }), { code: 'ALBUM_FIXED' });
-  assert.throws(() => A.setNote(a, al.id, 'x'), { code: 'ALBUM_ONLY_PHOTOS' });
-  assert.throws(() => A.setLocation(a, al.id, { address: 'x' }), { code: 'ALBUM_ONLY_PHOTOS' });
+  assert.throws(() => A.addNote(a, al.id, 'x'), { code: 'ALBUM_ONLY_PHOTOS' });
+  assert.throws(() => A.addLocation(a, al.id, { address: 'x' }), { code: 'ALBUM_ONLY_PHOTOS' });
   assert.throws(() => A.addBox(a, R, al.id), { code: 'ALBUM_NO_CHILDREN' });
   assert.equal(A.canHoldChildren(a, R, al.id), false);
   A.addPhotos(a, al.id, [photo('p1')]);
@@ -276,4 +276,110 @@ test('区域背景：用户照片与仓库图片谁后设置谁生效，失效�
   a.regionCovers['A03-C01'] = 'p2';
   assert.equal(A.resolveCover(a, R, 'A03-C01'), 'p2');
   assert.equal(A.hasUserCover(a, 'A03-C01'), true);
+});
+
+test('多条备注与地点：逐条添加、修改、删除；旧数据自动迁移', () => {
+  const a = A.emptyAlbum();
+  const b = A.addBox(a, R, 'A03-C01', { title: '小店' });
+  const n1 = A.addNote(a, b.id, '第一条');
+  const n2 = A.addNote(a, b.id, '第二条');
+  assert.throws(() => A.addNote(a, b.id, '  '), { code: 'EMPTY' });
+  A.updateNote(a, b.id, n1.id, '改过');
+  assert.deepEqual(a.nodes[b.id].notes.map((x) => x.text), ['改过', '第二条']);
+  A.deleteNote(a, b.id, n2.id);
+  assert.equal(a.nodes[b.id].notes.length, 1);
+  const l1 = A.addLocation(a, b.id, { address: '甲路', mapUrl: 'x' });
+  A.addLocation(a, b.id, { lat: 31.2, lng: 121.4, accuracy: 10, capturedAt: 1 });
+  assert.equal(a.nodes[b.id].locations.length, 2);
+  assert.equal(a.nodes[b.id].locations[0].mapUrl, undefined);
+  A.updateLocation(a, b.id, l1.id, { address: '乙路' });
+  assert.equal(a.nodes[b.id].locations[0].address, '乙路');
+  A.deleteLocation(a, b.id, l1.id);
+  assert.equal(a.nodes[b.id].locations.length, 1);
+
+  const old = A.normalizeAlbum({ nodes: { b1: { id: 'b1', parent: 'A01', title: 't', order: 0, note: '旧备注', location: { address: '旧地址' }, photos: [] } } });
+  const m = old.nodes.b1;
+  assert.deepEqual(m.notes.map((x) => x.text), ['旧备注']);
+  assert.deepEqual(m.locations.map((x) => x.address), ['旧地址']);
+  assert.equal('note' in m, false);
+  assert.equal('location' in m, false);
+  // 迁移结果稳定：两台设备各自读取旧数据，得到相同的编号
+  const again = A.normalizeAlbum({ nodes: { b1: { id: 'b1', parent: 'A01', title: 't', order: 0, note: '旧备注', photos: [] } } });
+  assert.equal(again.nodes.b1.notes[0].id, m.notes[0].id);
+});
+
+test('背景色范围：仅当前框 / 所在区域（含以后新建）/ 整个网页（含以后新建）', () => {
+  const a = A.emptyAlbum();
+  const x1 = A.addBox(a, R, 'A03-C01', { title: 'x1' });
+  const x2 = A.addBox(a, R, x1.id, { title: 'x2' });
+  const y1 = A.addBox(a, R, 'A03-C02', { title: 'y1' });
+  A.applyBoxColor(a, R, x2.id, '#111111', 'box');
+  assert.equal(a.nodes[x2.id].color, '#111111');
+  assert.equal(a.nodes[x1.id].color, null);
+
+  assert.equal(A.applyBoxColor(a, R, x2.id, '#222222', 'region'), 2);
+  assert.equal(a.nodes[x1.id].color, '#222222');
+  assert.equal(a.nodes[y1.id].color, null);
+  assert.equal(A.addBox(a, R, 'A03-C01').color, '#222222');
+  assert.equal(A.addBox(a, R, x2.id).color, '#222222');
+  assert.equal(A.addBox(a, R, 'A03-C02').color, null);
+
+  A.applyBoxColor(a, R, y1.id, '#333333', 'site');
+  assert.ok(Object.values(a.nodes).every((n) => n.color === '#333333'));
+  assert.equal(A.addBox(a, R, 'A01').color, '#333333');
+  assert.equal(A.addBox(a, R, 'A03-C01').color, '#333333');
+
+  A.applyBoxColor(a, R, y1.id, null, 'site');
+  assert.equal(A.addBox(a, R, 'A03-C01').color, null);
+  assert.equal(A.addBox(a, R, 'A03-C01', { color: '#444444' }).color, '#444444');
+});
+
+test('点亮日期：首次点亮记操作日期，旧数据取最早上传日期；取消点亮清空；手动修改不被覆盖', () => {
+  const day = (s) => new Date(`${s}T12:00:00`).getTime();
+  const a = A.emptyAlbum();
+  const b = A.addBox(a, R, 'A03-C01');
+  A.addPhotos(a, b.id, [{ id: 'p1', uploadedAt: day('2024-05-01') }, { id: 'p2', uploadedAt: day('2024-04-03') }]);
+  const c = A.addBox(a, R, 'A03-C02');
+  A.addNote(a, c.id, 'x');
+  const d = A.addBox(a, R, 'A01');
+  A.addNote(a, d.id, 'x');
+  A.syncLitTimes(a, R, day('2026-10-15'));
+  assert.equal(A.litDateOf(a, R, 'A03-C01'), '2024-04-03');
+  assert.equal(A.litDateOf(a, R, 'A03-C02'), '2026-10-15');
+  assert.equal(A.litDateOf(a, R, 'A01'), '2026-10-15');
+  assert.equal(A.litDateOf(a, R, 'A03'), '2024-04-03');
+  assert.equal(A.litDateOf(a, R, 'A04'), null);
+
+  A.setLitDate(a, R, 'A03-C02', '2020-02-29');
+  A.syncLitTimes(a, R, day('2026-10-20'));
+  assert.equal(A.litDateOf(a, R, 'A03-C02'), '2020-02-29');
+  assert.equal(A.litDateOf(a, R, 'A03'), '2020-02-29');
+  assert.throws(() => A.setLitDate(a, R, 'A03', '2020-01-01'), { code: 'NOT_EDITABLE' });
+  assert.throws(() => A.setLitDate(a, R, 'A04-C01', '2020-01-01'), { code: 'NOT_LIT' });
+  assert.throws(() => A.setLitDate(a, R, 'A03-C01', '2021-02-29'), { code: 'BAD_DATE' });
+
+  // 取消点亮后清空，重新点亮记新的操作日期
+  A.deleteBox(a, R, c.id);
+  A.syncLitTimes(a, R, day('2026-10-21'));
+  assert.equal(A.litDateOf(a, R, 'A03-C02'), null);
+  const c2 = A.addBox(a, R, 'A03-C02');
+  A.addNote(a, c2.id, 'y');
+  A.syncLitTimes(a, R, day('2026-11-01'));
+  assert.deepEqual(a.regionLit['A03-C02'], { date: '2026-11-01', manual: false });
+});
+
+test('时间线布局：位置与时间成比例，同侧放不下顺延，同一天依次排列', async () => {
+  const { layoutTimeline, PX_PER_MONTH } = await import('../../js/views.js');
+  const items = [
+    { id: 'a', date: '2024-01-01' },
+    { id: 'b', date: '2024-01-01' },
+    { id: 'c', date: '2024-01-01' },
+    { id: 'd', date: '2025-01-01' },
+  ];
+  const { items: out, height } = layoutTimeline(items, { cardH: 100 });
+  assert.equal(out[0].y, out[1].y);
+  assert.ok(Math.abs(out[3].y - out[0].y - 12 * PX_PER_MONTH) < 15);
+  assert.deepEqual(out.map((x) => x.side), [0, 1, 0, 1]);
+  assert.ok(out[2].cardY >= out[0].cardY + 100); // 同侧不重叠
+  assert.ok(height >= out[3].cardY + 100);
 });

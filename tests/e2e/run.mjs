@@ -6,6 +6,8 @@ import { createRequire } from 'node:module';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { loadRegionMap } from '../unit/helpers.mjs';
+import { makeFakeMap, encryptMap, makeFakeSvg, FAKE_PASSWORD } from '../fixtures/fake-region-map.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -238,10 +240,23 @@ try {
     await A.goto(`${BASE}#/r/A03-C01`);
     await A.click('.tile-title:text-is("美食")');
     await A.waitForSelector('.page-head h1:has-text("美食")');
-    await A.click('.section-head:has(h2:text("备注")) button');
+    await A.click('button:text-is("+ 添加备注")');
     await A.fill('.dialog textarea', '一家很好吃的面馆');
+    await A.click('.dialog button:text-is("添加")');
+    await A.waitForSelector('.notes .note:text("一家很好吃的面馆")');
+    // 多条备注：逐条添加、修改、删除
+    await A.click('button:text-is("+ 添加备注")');
+    await A.fill('.dialog textarea', '第二条');
+    await A.click('.dialog button:text-is("添加")');
+    await A.click('.notes .item:has(.note:text("第二条")) button:text-is("修改")');
+    await A.fill('.dialog textarea', '第二条改过');
     await A.click('.dialog button:text-is("保存")');
-    await A.click('.section-head:has(h2:text("地点")) button');
+    await A.waitForSelector('.notes .note:text("第二条改过")');
+    assert.equal(await A.locator('.notes .item').count(), 2);
+    await A.click('.notes .item:has(.note:text("第二条改过")) button:text-is("删除")');
+    await A.click('.overlay:last-child .dialog button:text-is("删除")');
+    await A.waitForFunction(() => document.querySelectorAll('.notes .item').length === 1);
+    await A.click('button:text-is("+ 添加地点")');
     await A.fill('.loc-form textarea', '某某路 88 号');
     await A.click('.dialog button:text-is("保存")');
     await A.waitForSelector('.map-links a:text("在 Apple 地图中打开")');
@@ -250,8 +265,8 @@ try {
     assert.ok(await settle(A));
   });
 
-  await step('定位后自动转成中文地址；Apple 地图链接用换算后的坐标；可删除地点', async () => {
-    await A.click('.section-head:has(h2:text("地点")) button');
+  await step('定位后自动转成中文地址；Apple 地图链接用换算后的坐标；可添加多个地点并逐个删除', async () => {
+    await A.click('button:text-is("+ 添加地点")');
     await A.click('.dialog button:text-is("获取当前位置")');
     await A.waitForFunction(() => document.querySelector('.loc-form textarea').value.includes('人民大道'), null, { timeout: 15000 });
     assert.equal(await A.inputValue('.loc-form textarea'), '上海市黄浦区人民大道（人民广场附近）');
@@ -260,17 +275,17 @@ try {
     assert.ok(await A.isVisible('.dialog button:text-is("按坐标填写地址")'));
     await A.click('.dialog button:text-is("保存")');
     await A.waitForSelector('.location .note:text("人民大道")');
-    assert.match(await A.getAttribute('.map-links a', 'href'), /^https:\/\/maps\.apple\.com\/\?ll=31\.228\d+,121\.478\d+&q=/);
-    await A.screenshot({ path: join(SHOTS, 'leaf-content.png') });
-    await A.click('.section-head:has(h2:text("地点")) button');
+    assert.equal(await A.locator('.location').count(), 2);
+    const gps = A.locator('.location:has(.note:text("人民大道"))');
+    assert.match(await gps.locator('.map-links a').getAttribute('href'), /^https:\/\/maps\.apple\.com\/\?ll=31\.228\d+,121\.478\d+&q=/);
+    await A.screenshot({ path: join(SHOTS, 'leaf-content.png'), fullPage: true });
+    // 修改：打开的是这一个地点
+    await gps.locator('button:text-is("修改")').click();
+    assert.match(await A.inputValue('.loc-form textarea'), /人民大道/);
     await A.click('.dialog button:text-is("删除地点")');
     await A.click('.overlay:last-child .dialog button:text-is("删除")');
-    await A.waitForSelector('text=暂无地点');
-    // 重新手动填写地址，供后续步骤使用
-    await A.click('.section-head:has(h2:text("地点")) button');
-    await A.fill('.loc-form textarea', '某某路 88 号');
-    await A.click('.dialog button:text-is("保存")');
-    await A.waitForSelector('.location .note:text("某某路 88 号")');
+    await A.waitForFunction(() => document.querySelectorAll('.location').length === 1);
+    assert.ok(await A.isVisible('.location .note:text("某某路 88 号")'));
     assert.ok(await settle(A));
   });
 
@@ -377,20 +392,77 @@ try {
     const titles = await A.locator('.grid .tile-title').allTextContents();
     assert.deepEqual(titles, ['2024 五一', '相册', '美食']);
     await tileMenu(A, '美食', '删除');
-    assert.match(await A.textContent('.dialog'), /文字备注、地点会一起删除/);
+    assert.match(await A.textContent('.dialog'), /1 条备注、1 个地点会一起删除/);
     await A.click('.dialog button:text-is("删除")');
     await A.waitForFunction(() => ![...document.querySelectorAll('.tile-title')].some((e) => e.textContent === '美食'));
     assert.ok(await settle(A));
     const a = await album(A);
     const boxes = a.trash.filter((t) => t.kind === 'box');
     assert.equal(boxes.length, 1);
-    assert.equal(boxes[0].node.note, '一家很好吃的面馆');
+    assert.equal(boxes[0].node.notes[0].text, '一家很好吃的面馆');
   });
 
   await step('删除需要确认；取消则不删除', async () => {
     await tileMenu(A, '2024 五一', '删除');
     await A.click('.dialog button:text-is("取消")');
     assert.ok(await nodeByTitle(A, '2024 五一'));
+  });
+
+  await step('背景颜色：仅当前框 / 所在区域全部框（含以后新建）', async () => {
+    await A.goto(`${BASE}#/r/A03-C01`);
+    await A.waitForSelector('.tile-title:text-is("2024 五一")');
+    await tileMenu(A, '2024 五一', '背景颜色');
+    await A.click('.swatch[title="#fde2e4"]');
+    await A.click('.sheet-item:has-text("里的全部框")');
+    await A.waitForSelector('.toast:has-text("个框的背景颜色")');
+    let a = await album(A);
+    const inRegion = (x) => {
+      let cur = x.parent;
+      while (a.nodes[cur]) cur = a.nodes[cur].parent;
+      return cur === 'A03-C01';
+    };
+    assert.ok(Object.values(a.nodes).filter(inRegion).every((n) => n.color === '#fde2e4'));
+    assert.ok(Object.values(a.nodes).filter((n) => !inRegion(n)).every((n) => n.color !== '#fde2e4'));
+    assert.equal(a.colorDefaults.regions['A03-C01'], '#fde2e4');
+    await newBox(A, '颜色测试');
+    a = await album(A);
+    assert.equal((await nodeByTitle(A, '颜色测试')).color, '#fde2e4');
+    await tileMenu(A, '颜色测试', '背景颜色');
+    await A.click('.swatch[title="#dcfce7"]');
+    await A.click('.sheet-item:has-text("仅当前框")');
+    await A.waitForFunction(() => Object.values(window.__app.sync.album.nodes).find((n) => n.title === '颜色测试').color === '#dcfce7');
+    assert.equal((await nodeByTitle(A, '2024 五一')).color, '#fde2e4');
+    await tileMenu(A, '颜色测试', '删除');
+    await A.click('.dialog button:text-is("删除")');
+    assert.ok(await settle(A));
+  });
+
+  await step('点亮日期：首次点亮记当天，可修改（精确到天）；一级区域取最早日期；刷新后不被覆盖', async () => {
+    const today = await A.evaluate(async () => (await import('/js/album.js')).localDate(window.__app.store.now()));
+    await A.goto(`${BASE}#/r/A03-C01`);
+    await A.waitForSelector('.lit-line');
+    assert.equal((await A.textContent('.lit-line')).replace('修改点亮时间', ''), `已点亮 · ${today.replace(/-/g, '.')}`);
+    await A.click('.lit-line button:text-is("修改点亮时间")');
+    await A.fill('.dialog input[type=date]', '2023-05-01');
+    await A.click('.dialog button:text-is("保存")');
+    await A.waitForSelector('.lit-line:has-text("2023.05.01")');
+    assert.ok(await settle(A));
+    assert.deepEqual((await album(A)).regionLit['A03-C01'], { date: '2023-05-01', manual: true });
+    await A.goto(`${BASE}#/r/A03`);
+    assert.equal(await A.textContent('.tile:has(.tile-title:text-is("A03-C01")) .tile-date'), '2023.05.01 点亮');
+    await A.goto(`${BASE}#/`);
+    await A.reload();
+    await A.waitForSelector('.grid .tile');
+    assert.equal(await A.textContent('.tile:has(.tile-title:text-is("A03")) .tile-date'), '2023.05.01 点亮');
+    assert.equal(await A.locator('.tile:has(.tile-title:text-is("A04")) .tile-date').count(), 0);
+    // 一级区域（有二级的）不能单独修改
+    await A.goto(`${BASE}#/r/A03`);
+    await A.waitForSelector('.page-head h1:text-is("A03")');
+    assert.equal(await A.locator('button:text-is("修改点亮时间")').count(), 0);
+    await A.goto(`${BASE}#/r/A03-C01`);
+    await A.waitForSelector('.tile-title:text-is("2024 五一")');
+    await A.click('button:text-is("开始编辑")');
+    await A.waitForSelector('.chip-status.editing');
   });
 
   await step('保存失败会明确提示，可重试成功', async () => {
@@ -553,8 +625,8 @@ try {
     await A.waitForSelector('.toast:has-text("已刷新")');
     const a = await album(A);
     const food = Object.values(a.nodes).find((n) => n.title === '美食' && n.parent === 'A03-C01');
-    assert.equal(food.note, '一家很好吃的面馆');
-    assert.equal(food.location.address, '某某路 88 号');
+    assert.deepEqual(food.notes.map((n) => n.text), ['一家很好吃的面馆']);
+    assert.deepEqual(food.locations.map((l) => l.address), ['某某路 88 号']);
   });
 
   await step('密钥加密工具：生成的密文可被相册用同一密码解开', async () => {
@@ -600,6 +672,115 @@ try {
     assert.equal(await A.locator('.more-btn').count(), 0);
     assert.ok(await settle(A));
     await A.click('button:text-is("结束编辑")');
+  });
+
+  await step('维护工具：上传区域名称与地图（虚构测试数据），网页显示简称', async () => {
+    const anonMap = loadRegionMap();
+    const fake = makeFakeMap(anonMap);
+    const enc = await encryptMap(fake);
+    const M = await ctx.newPage();
+    openPages.push(M);
+    M.on('pageerror', (e) => errors.push(e.message));
+    await M.goto(BASE.replace('/?', '/tools/admin.html?'));
+    await M.click('button:text-is("连接")');
+    await M.waitForSelector('text=尚未上传区域名称');
+    await M.setInputFiles('input[aria-label="加密映射文件"]', { name: 'region-map.enc.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(enc)) });
+    await M.fill('input[placeholder="映射文件密码"]', 'wrong-password');
+    await M.click('button:text-is("解密并预览")');
+    await M.waitForSelector('.error-text:has-text("映射密码不正确")', { timeout: 20000 });
+    await M.fill('input[placeholder="映射文件密码"]', FAKE_PASSWORD);
+    await M.setInputFiles('input[aria-label="地图 SVG 文件"]', { name: 'china-boundary.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(makeFakeSvg(fake)) });
+    await M.click('button:text-is("解密并预览")');
+    await M.waitForSelector('h3:text("预览")', { timeout: 20000 });
+    assert.equal(await M.inputValue('input[placeholder="映射文件密码"]'), '');
+    const pv = await M.textContent('.admin-card:has(h3:text("预览"))');
+    assert.match(pv, /区域名称 367 个/);
+    assert.match(pv, /A07 重名省、A07-C02 重名市/);
+    assert.match(pv, /34 个一级区域已对应，含九段线/);
+    await M.click('button:text-is("上传到存储桶")');
+    await M.waitForSelector('text=已上传区域名称 367 个');
+    await M.screenshot({ path: join(SHOTS, 'admin-names.png'), fullPage: true });
+    await M.close();
+    await A.goto(`${BASE}#/`);
+    await A.click('button[aria-label="菜单"]');
+    await A.click('.sheet-item:has-text("刷新数据")');
+    await A.waitForSelector('.tile-title:text-is("虚零三")');
+    assert.ok(await A.isVisible('.tile-title:text-is("重名省")'));
+    await A.click('.tile-title:text-is("重名省")');
+    await A.waitForSelector('.tile-title:text-is("重名市")');
+    assert.ok(await A.isVisible('.tile-title:text-is("兴安盟")'));
+    assert.equal(await A.textContent('.crumbs .current'), '重名省');
+  });
+
+  await step('地图页：只读，按一级区域点亮着色；点击显示名称与点亮日期/未点亮；港澳台标注；九段线', async () => {
+    await A.goto(`${BASE}#/`);
+    await A.click('.entry-btn:has-text("地图")');
+    await A.waitForSelector('svg.china-map path.prov');
+    assert.equal(await A.locator('svg.china-map path.prov').count(), 34);
+    assert.equal(await A.locator('svg.china-map .dashes path').count(), 1);
+    assert.equal(await A.locator('svg.china-map .marker').count(), 3);
+    const litL1 = await A.evaluate(() => window.__app.regions.level1.filter((id) => window.__app.lit.has(id)).sort());
+    const litPaths = await A.$$eval('svg.china-map path.prov.lit', (els) => els.map((e) => e.dataset.id).sort());
+    assert.deepEqual(litPaths, litL1);
+    await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
+    await A.waitForSelector('.map-info:has-text("虚零三")');
+    assert.equal(await A.textContent('.map-info'), '虚零三　2023.05.01 点亮');
+    await A.click('svg.china-map .marker[data-id="A09"] rect', { force: true });
+    await A.waitForSelector('.map-info:has-text("台湾")');
+    assert.equal(await A.textContent('.map-info'), '台湾　未点亮');
+    assert.equal(await A.locator('.toolbar, button:text-is("修改点亮时间")').count(), 0);
+    await A.screenshot({ path: join(SHOTS, 'map.png'), fullPage: true });
+  });
+
+  await step('时间线页：按点亮日期排列，距离与时间成比例，复用区域方框显示名称和日期', async () => {
+    await A.goto(`${BASE}#/`);
+    await A.click('.entry-btn:has-text("时间线")');
+    await A.waitForSelector('.tl-card');
+    const expected = await A.evaluate(async () => {
+      const m = await import('/js/album.js');
+      const app = window.__app;
+      return m.litDateRegions(app.regions).filter((id) => app.lit.has(id)).length;
+    });
+    const cards = await A.$$eval('.tl-card', (els) => els.map((e) => ({ id: e.dataset.id, date: e.dataset.date, top: parseFloat(e.style.top) })));
+    assert.equal(cards.length, expected);
+    assert.equal(cards[0].id, 'A03-C01');
+    assert.equal(cards[0].date, '2023-05-01');
+    const dates = cards.map((c) => c.date);
+    assert.deepEqual(dates, [...dates].sort());
+    const dots = await A.$$eval('.tl-dot', (els) => els.map((e) => parseFloat(e.style.top)));
+    // 2023-05-01 到下一个日期（今天）之间约每月 60px
+    const months = await A.evaluate((d) => (Date.parse(d[1]) - Date.parse(d[0])) / (30.44 * 86400000), [dates[0], dates[1]]);
+    assert.ok(Math.abs(dots[1] - dots[0] - months * 60) < 3, `${dots[1] - dots[0]} vs ${months * 60}`);
+    assert.match(await A.textContent('.tl-card[data-id="A03-C01"] .tile-date'), /2023\.05\.01 点亮/);
+    await A.screenshot({ path: join(SHOTS, 'timeline.png'), fullPage: true });
+    await A.setViewportSize({ width: 375, height: 812 });
+    await A.goto(`${BASE}#/timeline`);
+    await A.waitForSelector('.tl-card');
+    assert.equal(await A.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    await A.screenshot({ path: join(SHOTS, 'm-timeline.png'), fullPage: true });
+    await A.goto(`${BASE}#/map`);
+    await A.waitForSelector('svg.china-map path.prov');
+    assert.equal(await A.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    await A.screenshot({ path: join(SHOTS, 'm-map.png') });
+    await A.goto(`${BASE}#/`);
+    await A.waitForSelector('.grid .tile');
+    // 区域名称大字号：不超过方框高度的 1/4，最多两行
+    const sizes = await A.$$eval('.grid .tile.region', (els) =>
+      els.map((e) => {
+        const t = e.querySelector('.tile-title');
+        const fs = parseFloat(getComputedStyle(t).fontSize);
+        return { fs, h: e.getBoundingClientRect().height, lines: Math.round(t.getBoundingClientRect().height / (fs * 1.12)) };
+      })
+    );
+    for (const s of sizes) {
+      assert.ok(s.fs <= s.h / 4 + 0.5 && s.fs >= 20, JSON.stringify(s));
+      assert.ok(s.lines <= 2, JSON.stringify(s));
+    }
+    await A.screenshot({ path: join(SHOTS, 'm-home-names.png') });
+    await A.goto(`${BASE}#/r/A07`);
+    await A.waitForSelector('.tile-title:text-is("重名市")');
+    await A.screenshot({ path: join(SHOTS, 'm-level1-names.png') });
+    await A.setViewportSize({ width: 1100, height: 850 });
   });
 
   await step('数据自检无问题；页面无脚本错误', async () => {

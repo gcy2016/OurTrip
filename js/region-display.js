@@ -1,6 +1,7 @@
 // 固定区域的显示设置（由具备仓库修改权限的人维护）。
 //
-// 1. 名称：第一版直接显示区域编号（如 A03、A03-C01）。如需改名，在 REGION_DISPLAY 中填写 name。
+// 1. 名称：真实简称不放在公开仓库，由维护工具上传到私有存储桶（meta/region-names.json），网页登录后读取；
+//    读不到时显示区域编号。在 REGION_DISPLAY 中填写 name 可以覆盖某个区域的名称（会公开）。
 // 2. 代表图片：把图片放进 images/regions/ 目录，在 REGION_DISPLAY 中填写 image 路径，
 //    并把 imageUpdatedAt 填成修改的当前时间。
 //    封面规则：用户在网页上选的照片与这里配置的图片“谁后设置谁生效”，可以互相替换——
@@ -17,7 +18,7 @@
 export const REGION_DISPLAY = {};
 
 export const COLORS = {
-  region: '#eef2f7', // 固定区域默认背景（未点亮浅色；点亮后为明亮渐变，见 css/app.css）
+  region: '#d7e4f8', // 固定区域默认背景（未点亮浅色；点亮后为明亮渐变，见 css/app.css）
   box: '#eaf2ff', // 自定义框默认背景
 };
 

@@ -2,11 +2,14 @@
 // album.json 结构：
 // {
 //   schema: 1,
-//   nodes:  { [id]: { id, parent, kind?, title, type, order, color, cover, note, location, photos: [photoId] } },
+//   nodes:  { [id]: { id, parent, kind?, title, type, order, color, cover, notes: [{id, text}],
+//                     locations: [{id, address, lat, lng, accuracy, capturedAt}], photos: [photoId] } },
 //           kind 为 'album' 时是“相册框”：名称固定为“相册”，只能放照片，不能有子框、备注和地点。
 //   photos: { [id]: { id, box, caption, exif, width, height, origName, origSize, uploadedAt } },
 //   regionCovers: { [regionId]: { photo, at } },   // at：用户设置封面的时间（旧数据可能是照片 id 字符串）
 //   trash:  [ { id, kind: 'box'|'photo', deletedAt, parent, region, order, node?, photos: [...] } ],
+//   regionLit: { [regionId]: { date: 'YYYY-MM-DD', manual } },   // 二级区域（及无二级的一级区域）的点亮日期
+//   colorDefaults: { site: color|null, regions: { [regionId]: color|null } }, // 新建框的默认背景色
 // }
 // parent 为固定区域编号（如 A03-C01）或另一个自定义框的 id。
 
@@ -29,7 +32,24 @@ export class AlbumError extends Error {
 }
 
 export function emptyAlbum() {
-  return { schema: SCHEMA, nodes: {}, photos: {}, regionCovers: {}, trash: [] };
+  return { schema: SCHEMA, nodes: {}, photos: {}, regionCovers: {}, trash: [], regionLit: {}, colorDefaults: { site: null, regions: {} } };
+}
+
+/** 旧数据（单条 note / location）迁移为多条 notes / locations */
+export function migrateNode(n) {
+  if (!Array.isArray(n.photos)) n.photos = [];
+  if (!Array.isArray(n.notes)) {
+    n.notes = typeof n.note === 'string' && n.note.trim() ? [{ id: `n0${n.id}`, text: n.note }] : [];
+  }
+  if (!Array.isArray(n.locations)) {
+    n.locations = hasLocation(n.location) ? [{ id: `l0${n.id}`, ...n.location }] : [];
+  }
+  delete n.note;
+  delete n.location;
+  if (n.cover === undefined) n.cover = null;
+  if (n.color === undefined) n.color = null;
+  if (typeof n.order !== 'number') n.order = 0;
+  return n;
 }
 
 export function normalizeAlbum(raw) {
@@ -41,15 +61,13 @@ export function normalizeAlbum(raw) {
     photos: a.photos && typeof a.photos === 'object' ? a.photos : {},
     regionCovers: a.regionCovers && typeof a.regionCovers === 'object' ? a.regionCovers : {},
     trash: Array.isArray(a.trash) ? a.trash : [],
+    regionLit: a.regionLit && typeof a.regionLit === 'object' ? a.regionLit : {},
+    colorDefaults: {
+      site: (a.colorDefaults && a.colorDefaults.site) || null,
+      regions: (a.colorDefaults && a.colorDefaults.regions && typeof a.colorDefaults.regions === 'object' && a.colorDefaults.regions) || {},
+    },
   };
-  for (const n of Object.values(album.nodes)) {
-    if (!Array.isArray(n.photos)) n.photos = [];
-    if (typeof n.note !== 'string') n.note = '';
-    if (n.location === undefined) n.location = null;
-    if (n.cover === undefined) n.cover = null;
-    if (n.color === undefined) n.color = null;
-    if (typeof n.order !== 'number') n.order = 0;
-  }
+  for (const n of Object.values(album.nodes)) migrateNode(n);
   return album;
 }
 
@@ -78,9 +96,17 @@ export function hasLocation(loc) {
   return !!((loc.address && loc.address.trim()) || Number.isFinite(loc.lat) || (loc.mapUrl && loc.mapUrl.trim()));
 }
 
+export function hasNotes(node) {
+  return !!node && Array.isArray(node.notes) && node.notes.some((x) => x.text && x.text.trim());
+}
+
+export function hasLocations(node) {
+  return !!node && Array.isArray(node.locations) && node.locations.some(hasLocation);
+}
+
 /** 末级框是否存放了用户内容（照片、文字备注、地址/地点都算） */
 export function hasContent(node) {
-  return !!node && (node.photos.length > 0 || !!(node.note && node.note.trim()) || hasLocation(node.location));
+  return !!node && (node.photos.length > 0 || hasNotes(node) || hasLocations(node));
 }
 
 /** 从框向上找到所属固定区域编号 */
@@ -173,23 +199,31 @@ function nextOrder(album, parentId) {
 
 // ---------- 框操作 ----------
 
-export function addBox(album, regions, parentId, { title = '', type = '', color = null, kind = null } = {}) {
+function makeNode(fields) {
+  return { color: null, cover: null, notes: [], locations: [], photos: [], ...fields };
+}
+
+/** 新建框的默认背景色：所在二级区域（或无二级的一级区域）的默认色 > 全站默认色 > 无 */
+export function defaultBoxColor(album, regions, parentId) {
+  const rid = isRegionId(parentId) ? parentId : regionOfNode(album, parentId);
+  const d = album.colorDefaults || { site: null, regions: {} };
+  if (rid && d.regions && Object.prototype.hasOwnProperty.call(d.regions, rid)) return d.regions[rid] || null;
+  return d.site || null;
+}
+
+export function addBox(album, regions, parentId, { title = '', type = '', color, kind = null } = {}) {
   assertContainer(album, regions, parentId);
   const id = newId('b');
   const isAlbum = kind === 'album';
-  album.nodes[id] = {
+  album.nodes[id] = makeNode({
     id,
     parent: parentId,
     ...(isAlbum ? { kind: 'album' } : {}),
     title: isAlbum ? ALBUM_TITLE : String(title).trim() || '新建框',
     type: isAlbum ? ALBUM_TITLE : String(type || '').trim(),
     order: nextOrder(album, parentId),
-    color,
-    cover: null,
-    note: '',
-    location: null,
-    photos: [],
-  };
+    color: color === undefined ? defaultBoxColor(album, regions, parentId) : color,
+  });
   return album.nodes[id];
 }
 
@@ -204,16 +238,104 @@ export function updateBox(album, id, patch) {
   return n;
 }
 
-export function setNote(album, id, note) {
+// ---------- 备注与地点（每个末级框可以有多条） ----------
+
+export function addNote(album, id, text) {
   const n = assertLeafForContent(album, id);
-  n.note = String(note || '');
-  return n;
+  const t = String(text || '');
+  if (!t.trim()) throw new AlbumError('EMPTY', '备注不能为空');
+  const note = { id: newId('n'), text: t };
+  n.notes.push(note);
+  return note;
 }
 
-export function setLocation(album, id, loc) {
+export function updateNote(album, id, noteId, text) {
   const n = assertLeafForContent(album, id);
-  n.location = hasLocation(loc) ? { ...loc } : null;
-  return n;
+  const note = n.notes.find((x) => x.id === noteId);
+  if (!note) throw new AlbumError('NOT_FOUND', '备注不存在或已被删除');
+  if (!String(text || '').trim()) return deleteNote(album, id, noteId);
+  note.text = String(text);
+  return note;
+}
+
+export function deleteNote(album, id, noteId) {
+  const n = getNode(album, id);
+  n.notes = n.notes.filter((x) => x.id !== noteId);
+  return null;
+}
+
+function cleanLocation(loc) {
+  const out = {};
+  if (loc.address && String(loc.address).trim()) out.address = String(loc.address).trim();
+  if (Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+    out.lat = loc.lat;
+    out.lng = loc.lng;
+    if (Number.isFinite(loc.accuracy)) out.accuracy = loc.accuracy;
+    if (loc.capturedAt) out.capturedAt = loc.capturedAt;
+  }
+  return out;
+}
+
+export function addLocation(album, id, loc) {
+  const n = assertLeafForContent(album, id);
+  const clean = cleanLocation(loc || {});
+  if (!hasLocation(clean)) throw new AlbumError('EMPTY', '请填写地址或获取当前位置');
+  const item = { id: newId('l'), ...clean };
+  n.locations.push(item);
+  return item;
+}
+
+export function updateLocation(album, id, locId, loc) {
+  const n = assertLeafForContent(album, id);
+  const i = n.locations.findIndex((x) => x.id === locId);
+  if (i < 0) throw new AlbumError('NOT_FOUND', '地点不存在或已被删除');
+  const clean = cleanLocation(loc || {});
+  if (!hasLocation(clean)) return deleteLocation(album, id, locId);
+  n.locations[i] = { id: locId, ...clean };
+  return n.locations[i];
+}
+
+export function deleteLocation(album, id, locId) {
+  const n = getNode(album, id);
+  n.locations = n.locations.filter((x) => x.id !== locId);
+  return null;
+}
+
+// ---------- 背景色 ----------
+
+/**
+ * 修改框的背景色。scope：
+ * - 'box'：只改当前框；
+ * - 'region'：当前框所在二级区域（或无二级的一级区域）下现有的全部框，以及以后在该区域新建的框；
+ * - 'site'：整个网页现有的全部框，以及以后新建的框。
+ * color 为 null 表示恢复默认色。
+ */
+export function applyBoxColor(album, regions, nodeId, color, scope = 'box') {
+  const n = getNode(album, nodeId);
+  const c = color || null;
+  if (scope === 'box') {
+    n.color = c;
+    return 1;
+  }
+  album.colorDefaults = album.colorDefaults || { site: null, regions: {} };
+  let count = 0;
+  if (scope === 'region') {
+    const rid = regionOfNode(album, nodeId);
+    for (const x of Object.values(album.nodes)) {
+      if (regionOfNode(album, x.id) === rid) {
+        x.color = c;
+        count++;
+      }
+    }
+    album.colorDefaults.regions[rid] = c;
+    return count;
+  }
+  for (const x of Object.values(album.nodes)) {
+    x.color = c;
+    count++;
+  }
+  album.colorDefaults = { site: c, regions: {} };
+  return count;
 }
 
 function removeCoverRefs(album, photoIds) {
@@ -271,18 +393,14 @@ export function mergeBoxes(album, ids, title = '') {
   const chosen = siblings.filter((sid) => ids.includes(sid));
   const firstPos = siblings.indexOf(chosen[0]);
   const id = newId('b');
-  album.nodes[id] = {
+  album.nodes[id] = makeNode({
     id,
     parent,
     title: String(title).trim() || '合并的框',
     type: '',
     order: 0,
-    color: null,
-    cover: null,
-    note: '',
-    location: null,
-    photos: [],
-  };
+    color: defaultBoxColor(album, null, parent),
+  });
   chosen.forEach((cid, i) => {
     album.nodes[cid].parent = id;
     album.nodes[cid].order = i;
@@ -311,7 +429,7 @@ export function pasteTemplate(album, regions, template, parentId) {
   const make = (tpl, parent) => {
     const id = newId('b');
     const isAlbum = tpl.kind === 'album';
-    album.nodes[id] = {
+    album.nodes[id] = makeNode({
       id,
       parent,
       ...(isAlbum ? { kind: 'album' } : {}),
@@ -319,11 +437,7 @@ export function pasteTemplate(album, regions, template, parentId) {
       type: isAlbum ? ALBUM_TITLE : tpl.type || '',
       order: nextOrder(album, parent),
       color: tpl.color || null,
-      cover: null,
-      note: '',
-      location: null,
-      photos: [],
-    };
+    });
     for (const c of tpl.children || []) make(c, id);
     return id;
   };
@@ -503,6 +617,73 @@ export function countWithin(album, regions, targetId) {
   return { boxes, photos };
 }
 
+// ---------- 点亮日期 ----------
+
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** 时间戳 → 本地日期 YYYY-MM-DD */
+export function localDate(ts) {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+export function isValidDate(s) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s || ''))) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const t = new Date(y, m - 1, d);
+  return t.getFullYear() === y && t.getMonth() === m - 1 && t.getDate() === d;
+}
+
+/** 可以记录点亮日期的区域：二级区域，或没有二级区域的一级区域 */
+export function litDateRegions(regions) {
+  return [...regions.byId.values()].filter((r) => r.level === 2 || r.children.length === 0).map((r) => r.id);
+}
+
+/**
+ * 根据当前内容同步点亮日期（每次修改后调用）：
+ * - 新点亮的区域：记为导致点亮的操作日期；若区域里已有更早上传的照片（旧数据），取最早的上传日期；
+ * - 不再点亮的区域：清除日期；再次点亮时重新按操作日期记录；
+ * - 已有的日期（包括用户手动修改的）保持不变。
+ */
+export function syncLitTimes(album, regions, now = Date.now()) {
+  album.regionLit = album.regionLit || {};
+  const lit = computeLit(album, regions);
+  for (const rid of Object.keys(album.regionLit)) {
+    if (!lit.has(rid)) delete album.regionLit[rid];
+  }
+  for (const rid of litDateRegions(regions)) {
+    if (!lit.has(rid) || album.regionLit[rid]) continue;
+    let ts = now;
+    for (const p of Object.values(album.photos)) {
+      if (p.uploadedAt && p.uploadedAt < ts && regionOfNode(album, p.box) === rid) ts = p.uploadedAt;
+    }
+    album.regionLit[rid] = { date: localDate(ts), manual: false };
+  }
+}
+
+/** 区域当前的点亮日期；一级区域（有二级区域的）取下属二级区域中最早的日期 */
+export function litDateOf(album, regions, regionId) {
+  const r = regions.byId.get(regionId);
+  if (!r) return null;
+  const lit = album.regionLit || {};
+  if (r.level === 2 || r.children.length === 0) return (lit[regionId] && lit[regionId].date) || null;
+  const dates = r.children.map((c) => lit[c] && lit[c].date).filter(Boolean).sort();
+  return dates[0] || null;
+}
+
+/** 用户手动修改点亮日期（只适用于二级区域或无二级的一级区域，且该区域须已点亮） */
+export function setLitDate(album, regions, regionId, date) {
+  const r = regions.byId.get(regionId);
+  if (!r || !(r.level === 2 || r.children.length === 0)) {
+    throw new AlbumError('NOT_EDITABLE', '一级区域的点亮时间取下属二级区域中最早的时间，不能单独修改');
+  }
+  if (!computeLit(album, regions).has(regionId)) throw new AlbumError('NOT_LIT', '这个区域还没有点亮');
+  if (!isValidDate(date)) throw new AlbumError('BAD_DATE', '请输入正确的日期');
+  album.regionLit[regionId] = { date, manual: true };
+}
+
 // ---------- 回收（技术维护用） ----------
 
 export function referencedPhotoIds(album) {
@@ -523,7 +704,7 @@ export function restoreTrash(album, regions, trashId) {
   if (t.kind === 'box') {
     target = canHoldChildren(album, regions, t.parent) ? t.parent : fallbackParent();
     const id = album.nodes[t.node.id] ? newId('b') : t.node.id;
-    album.nodes[id] = { ...t.node, id, parent: target, cover: null, photos: [] };
+    album.nodes[id] = migrateNode({ ...t.node, id, parent: target, cover: null, photos: [] });
     const siblings = childNodes(album, target).map((s) => s.id).filter((s) => s !== id);
     siblings.splice(Math.min(t.order, siblings.length), 0, id);
     renumber(album, target, siblings);
@@ -569,7 +750,7 @@ export function validateAlbum(album, regions) {
     else if (!regions.byId.has(rid)) problems.push(`框 ${n.id} 挂在未知区域 ${rid} 下`);
     else if (!isContentRegion(regions, rid) && n.parent === rid) problems.push(`框 ${n.id} 直接挂在有二级区域的一级区域 ${rid} 下`);
     if (hasContent(n) && hasChildren(album, n.id)) problems.push(`框 ${n.id} 同时有内容和子框`);
-    if (isAlbumBox(n) && (hasChildren(album, n.id) || n.note.trim() || hasLocation(n.location))) problems.push(`相册框 ${n.id} 含有照片以外的内容或子框`);
+    if (isAlbumBox(n) && (hasChildren(album, n.id) || hasNotes(n) || hasLocations(n))) problems.push(`相册框 ${n.id} 含有照片以外的内容或子框`);
     for (const pid of n.photos) {
       if (!album.photos[pid]) problems.push(`框 ${n.id} 引用了不存在的照片 ${pid}`);
       else if (album.photos[pid].box !== n.id) problems.push(`照片 ${pid} 的所属框不一致`);

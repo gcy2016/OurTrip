@@ -10,6 +10,7 @@ import { Session, PRESENCE_PREFIX } from './session.js';
 import { ALBUM_KEY } from './sync.js';
 import { photoKey, thumbKey } from './upload.js';
 import { h, clear, toast, confirmDialog, alertDialog, formatTime } from './ui.js';
+import * as N from './region-names.js';
 
 const demo = new URLSearchParams(location.search).has('demo');
 const root = document.getElementById('admin');
@@ -39,6 +40,7 @@ async function withLock(label, fn) {
     await reload();
     const result = await fn(current.album);
     if (result === false) return false;
+    A.syncLitTimes(current.album, regions, store.now());
     const remote = await store.headETag(ALBUM_KEY);
     if (remote !== current.etag) throw new Error('云端数据刚被修改，请刷新后重试');
     current.album.updatedAt = store.now();
@@ -115,7 +117,7 @@ function trashSection() {
     .sort((x, y) => y.deletedAt - x.deletedAt)
     .map((t) => {
       const days = Math.max(0, Math.ceil((t.deletedAt + A.TRASH_KEEP_MS - now) / 86400000));
-      const what = t.kind === 'box' ? `框“${t.node.title}”（${t.photos.length} 张照片${t.node.note ? '，含备注' : ''}${A.hasLocation(t.node.location) ? '，含地点' : ''}）` : `照片 ${t.photos[0] && (t.photos[0].origName || t.photos[0].id)}`;
+      const what = t.kind === 'box' ? `框“${t.node.title}”（${t.photos.length} 张照片${A.hasNotes(A.migrateNode({ ...t.node })) ? '，含备注' : ''}${A.hasLocations(A.migrateNode({ ...t.node })) ? '，含地点' : ''}）` : `照片 ${t.photos[0] && (t.photos[0].origName || t.photos[0].id)}`;
       return h(
         'tr',
         null,
@@ -379,11 +381,137 @@ function presenceSection() {
   );
 }
 
+let namesInfo = null; // 已上传的名称文件概况
+let namesPreview = null; // { names, full, mapData, problems, version }
+
+async function loadNamesInfo() {
+  try {
+    const [n, m] = await Promise.all([store.getJSON(N.NAMES_KEY), store.getJSON(N.MAP_KEY)]);
+    namesInfo = { names: n && n.data, map: m && m.data };
+  } catch (e) {
+    namesInfo = { error: e.message };
+  }
+  render();
+}
+
+function readFile(input) {
+  const f = input.files && input.files[0];
+  return f ? f.text() : Promise.resolve(null);
+}
+
+/** 上传区域名称与地图：在本页解密映射文件，计算简称，清洗地图后上传到存储桶（名称不进入公开仓库） */
+function namesSection() {
+  if (!namesInfo) loadNamesInfo();
+  const encInput = h('input', { type: 'file', accept: '.json,application/json', 'aria-label': '加密映射文件' });
+  const pw = h('input', { class: 'input', type: 'password', placeholder: '映射文件密码', autocomplete: 'off' });
+  const svgInput = h('input', { type: 'file', accept: '.svg,image/svg+xml', 'aria-label': '地图 SVG 文件' });
+  const err = h('p', { class: 'error-text', role: 'status' });
+  const status = [];
+  if (namesInfo && namesInfo.error) status.push(h('p', { class: 'error-text' }, `读取失败：${namesInfo.error}`));
+  else if (namesInfo) {
+    const n = namesInfo.names;
+    const m = namesInfo.map;
+    status.push(
+      h('p', null, n && n.names ? `已上传区域名称 ${Object.keys(n.names).length} 个（${formatTime(n.uploadedAt)}）` : '尚未上传区域名称，网页上显示区域编号。'),
+      h('p', null, m && m.regions ? `已上传地图（${Object.keys(m.regions).length} 个一级区域，${formatTime(m.uploadedAt)}）` : '尚未上传地图，网页上的“地图”页暂时无法显示。')
+    );
+  }
+  const preview = [];
+  if (namesPreview) {
+    const p = namesPreview;
+    const l1 = regions.level1.map((id) => `${id} ${p.names[id]}`).join('、');
+    const changed = Object.keys(p.names).filter((id) => /[省市州]$/.test(p.names[id]) && p.names[id] !== p.full[id]);
+    preview.push(
+      h('h3', null, '预览'),
+      h('p', null, `区域名称 ${Object.keys(p.names).length} 个，全部不超过 ${N.MAX_NAME_LEN} 个字、没有重名。`),
+      h('p', { class: 'dialog-hint' }, `一级区域：${l1}`),
+      changed.length ? h('p', { class: 'dialog-hint' }, `为区分重名加了“省/市/州”：${changed.map((id) => `${id} ${p.names[id]}`).join('、')}`) : null,
+      p.mapData ? h('p', null, `地图：${Object.keys(p.mapData.regions).length} 个一级区域已对应，含九段线。`) : h('p', { class: 'muted' }, '未选择地图文件，本次只上传名称。'),
+      p.problems.length ? h('ul', { class: 'error-text' }, p.problems.map((x) => h('li', null, x))) : null,
+      h(
+        'div',
+        { class: 'row-gap' },
+        h(
+          'button',
+          {
+            class: 'btn btn-primary',
+            disabled: p.problems.length > 0,
+            onclick: async (e) => {
+              e.currentTarget.disabled = true;
+              try {
+                const at = store.now();
+                await store.putJSON(N.NAMES_KEY, { format: N.NAMES_FORMAT, version: p.version, names: p.names, uploadedAt: at });
+                if (p.mapData) await store.putJSON(N.MAP_KEY, { ...p.mapData, uploadedAt: at });
+                namesPreview = null;
+                toast('已上传，网页刷新后生效', 'ok');
+                await loadNamesInfo();
+              } catch (x) {
+                toast(`上传失败：${x.message}`, 'error');
+                render();
+              }
+            },
+          },
+          '上传到存储桶'
+        ),
+        h('button', { class: 'btn', onclick: () => ((namesPreview = null), render()) }, '放弃')
+      )
+    );
+  }
+  return section(
+    '区域名称与地图',
+    h('p', { class: 'dialog-hint' }, '选择加密映射文件（private/region-map.enc.json）并输入映射密码，在本页解密后计算简称；可同时选择地图文件（china-boundary.svg）。密码只在本页使用，不保存、不上传。'),
+    ...status,
+    h('label', { class: 'field-label' }, '加密映射文件 ', encInput),
+    pw,
+    h('label', { class: 'field-label' }, '地图 SVG（可选） ', svgInput),
+    h(
+      'button',
+      {
+        class: 'btn',
+        onclick: async (e) => {
+          const btn = e.currentTarget;
+          err.textContent = '';
+          btn.disabled = true;
+          btn.textContent = '正在解密…';
+          try {
+            const encText = await readFile(encInput);
+            if (!encText) throw new Error('请先选择加密映射文件');
+            if (!pw.value) throw new Error('请输入映射密码');
+            const enc = JSON.parse(encText);
+            const map = await N.decryptRegionMap(enc, pw.value);
+            pw.value = '';
+            const problems = N.checkAgainstAnon(map, REGION_MAP_ANON);
+            const { names, full, problems: nameProblems } = N.computeShortNames(map);
+            problems.push(...nameProblems);
+            let mapData = null;
+            const svgText = await readFile(svgInput);
+            if (svgText) {
+              const r = N.parseChinaSvg(svgText, map, names);
+              problems.push(...r.problems);
+              mapData = r.data;
+            }
+            namesPreview = { names, full, mapData, problems, version: enc.version || null };
+            render();
+          } catch (x) {
+            err.textContent = x instanceof SyntaxError ? '文件格式不正确' : x.message;
+            btn.disabled = false;
+            btn.textContent = '解密并预览';
+          }
+        },
+      },
+      '解密并预览'
+    ),
+    err,
+    ...preview
+  );
+}
+
 function render() {
   clear(root);
   if (!store || !current) return root.appendChild(connectView());
   root.appendChild(h('div', { class: 'admin-head' }, h('h1', null, '相册维护工具'), h('a', { href: demo ? '../?demo=1' : '../' }, '返回相册')));
   root.appendChild(overview());
+  root.appendChild(namesSection());
   root.appendChild(trashSection());
   root.appendChild(filesSection());
   root.appendChild(versionsSection());

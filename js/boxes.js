@@ -110,6 +110,23 @@ function colorDialog(app, node) {
   );
 }
 
+/** 背景颜色：先选颜色，再选应用范围（只改本框 / 所在区域全部框及以后新建的框 / 整个网页） */
+export async function colorFlow(app, nodeId) {
+  const node = app.sync.album.nodes[nodeId];
+  const c = await colorDialog(app, node);
+  if (c === undefined) return false;
+  const rid = A.regionOfNode(app.sync.album, nodeId);
+  const scope = await actionSheet(c ? '应用范围' : '恢复默认颜色的范围', [
+    { label: '仅当前框', value: 'box' },
+    { label: `“${app.regionName(rid)}”里的全部框`, value: 'region', hint: '包括以后在这里新建的框' },
+    { label: '整个网页的全部框', value: 'site', hint: '包括以后新建的框' },
+  ]);
+  if (!scope) return false;
+  const r = app.mutate((a) => A.applyBoxColor(a, app.regions, nodeId, c || null, scope));
+  if (r && scope !== 'box') toast(`已修改 ${r.value} 个框的背景颜色`, 'ok');
+  return !!r;
+}
+
 /** 选择移动目标：逐级浏览区域与框，在可放置的位置点“移到这里” */
 export function movePicker(app, nodeId) {
   const album = app.sync.album;
@@ -201,8 +218,7 @@ export async function boxActions(app, nodeId) {
     } else if (v === '__none') app.mutate((a) => A.updateBox(a, nodeId, { type: '' }));
     else if (v) app.mutate((a) => A.updateBox(a, nodeId, { type: v }));
   } else if (choice === 'color') {
-    const c = await colorDialog(app, node);
-    if (c !== undefined) app.mutate((a) => A.updateBox(a, nodeId, { color: c }));
+    await colorFlow(app, nodeId);
   } else if (choice === 'uncover') {
     app.mutate((a) => A.clearCover(a, nodeId));
   } else if (choice === 'copy') {
@@ -228,8 +244,8 @@ export async function deleteBoxFlow(app, nodeId, kidCount) {
   else if (A.hasContent(node)) {
     const parts = [];
     if (node.photos.length) parts.push(`${node.photos.length} 张照片`);
-    if (node.note.trim()) parts.push('文字备注');
-    if (A.hasLocation(node.location)) parts.push('地点');
+    if (A.hasNotes(node)) parts.push(`${node.notes.length} 条备注`);
+    if (A.hasLocations(node)) parts.push(`${node.locations.length} 个地点`);
     msg = `“${node.title}”里的${parts.join('、')}会一起删除（30 天内可由技术维护恢复）。确定删除？`;
   } else msg = `确定删除空框“${node.title}”？`;
   if (!(await confirmDialog(msg, { danger: true, okLabel: '删除' }))) return false;
@@ -256,11 +272,13 @@ export function pasteFlow(app, parentId) {
 }
 
 /** 地点编辑：手动输入地址，或经授权读取当前位置（配置了地址服务时自动转成中文地址） */
-export function locationDialog(app, nodeId) {
+export function locationDialog(app, nodeId, locId = null) {
   const node = app.sync.album.nodes[nodeId];
-  const loc = { ...(node.location || {}) };
+  const existing = locId ? node.locations.find((x) => x.id === locId) : null;
+  const loc = { ...(existing || {}) };
+  delete loc.id;
   delete loc.mapUrl;
-  const hadLocation = A.hasLocation(node.location);
+  const hadLocation = !!existing;
   let generation = 0; // 取消或关闭后，迟到的定位/查询结果一律丢弃
   return dialog(
     (close) => {
@@ -375,11 +393,15 @@ export function locationDialog(app, nodeId) {
 
       const save = () => {
         const next = { ...loc, address: addr.value.trim() };
-        if (app.mutate((a) => A.setLocation(a, nodeId, next))) finish(true);
+        if (!A.hasLocation(next)) {
+          status.textContent = '请填写地址或获取当前位置。';
+          return;
+        }
+        if (app.mutate((a) => (hadLocation ? A.updateLocation(a, nodeId, locId, next) : A.addLocation(a, nodeId, next)))) finish(true);
       };
       const remove = async () => {
-        if (!(await confirmDialog('删除这个框里保存的地点（地址和坐标）？', { danger: true, okLabel: '删除' }))) return;
-        if (app.mutate((a) => A.setLocation(a, nodeId, null))) finish(true);
+        if (!(await confirmDialog('删除这个地点（地址和坐标）？', { danger: true, okLabel: '删除' }))) return;
+        if (app.mutate((a) => A.deleteLocation(a, nodeId, locId))) finish(true);
       };
       render();
       return h(
@@ -396,6 +418,6 @@ export function locationDialog(app, nodeId) {
         )
       );
     },
-    { title: '编辑地点', onClose: () => generation++ }
+    { title: hadLocation ? '编辑地点' : '添加地点', onClose: () => generation++ }
   );
 }
