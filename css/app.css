@@ -1372,15 +1372,16 @@ textarea.input {
 .china-map .other {
   fill: #e4e8ee;
   stroke: #ffffff;
-  stroke-width: 0.03;
 }
 
-.china-map.l2-map .prov {
-  stroke-width: 0.03;
+.china-map.l2-map .prov,
+.china-map.l2-map .other {
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
 }
 
 .china-map.l2-map .prov.sel {
-  stroke-width: 0.06;
+  stroke-width: 3px;
 }
 
 .l2-labels text {
@@ -1389,12 +1390,14 @@ textarea.input {
   pointer-events: none;
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.8);
-  stroke-width: 0.03;
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
 }
 
 .l2-labels text.date {
-  font-weight: 400;
-  fill: var(--text-secondary);
+  font-weight: 500;
+  fill: #3f4b5c;
+  stroke: none;
 }
 
 .map-info .l2-open {
