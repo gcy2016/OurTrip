@@ -1402,33 +1402,48 @@ textarea.input {
   pointer-events: none;
 }
 
-/* 港澳：原位置两个小点，点亮后发亮；外圈为共同的点击热区 */
-.china-map .dots {
+/* 港澳：原位置小圆点 + 引线 + 地图外的名称标注，亮暗跟随首页 */
+.china-map .marker {
   cursor: pointer;
   outline: none;
 }
 
-.china-map .dots .hot {
-  fill: rgba(47, 124, 246, 0.06);
-  stroke: rgba(47, 124, 246, 0.25);
+.china-map .marker line,
+.china-map .marker circle {
+  pointer-events: none;
+}
+
+.china-map .marker line {
+  stroke: #6b7a90;
   stroke-width: 0.06;
 }
 
-.china-map .dots.sel .hot {
-  fill: rgba(47, 124, 246, 0.14);
-  stroke: var(--primary-strong);
-  stroke-width: 0.12;
+.china-map .marker circle {
+  fill: #6b7a90;
 }
 
-.china-map .dots .dot {
-  fill: #8a9ab3;
-  stroke: #ffffff;
-  stroke-width: 0.08;
+.china-map .marker rect {
+  fill: var(--card-muted);
+  stroke: #9aa9bf;
+  stroke-width: 0.06;
 }
 
-.china-map .dots .dot.lit {
+.china-map .marker.lit rect {
+  fill: #5fc79a;
+}
+
+.china-map .marker.lit circle {
   fill: #2fbf7f;
-  filter: drop-shadow(0 0 0.35px #2fbf7f);
+}
+
+.china-map .marker.sel rect {
+  stroke: var(--primary-strong);
+  stroke-width: 0.15;
+}
+
+.china-map .marker text {
+  fill: var(--text);
+  pointer-events: none;
 }
 
 .map-info {

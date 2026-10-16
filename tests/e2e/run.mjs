@@ -713,14 +713,15 @@ try {
     assert.equal(await A.textContent('.crumbs .current'), '重名省');
   });
 
-  await step('地图页：横向铺满、只读着色；点击显示名称与日期；无九段线；台湾直接显示；港澳两个小点共用热区', async () => {
+  await step('地图页：横向铺满、只读着色；点击显示名称与日期；无九段线；台湾直接显示；港澳标注在台湾右侧、南海诸岛左侧', async () => {
     await A.goto(`${BASE}#/`);
     await A.click('.entry-btn:has-text("地图")');
     await A.waitForSelector('svg.china-map path.prov');
     assert.equal(await A.locator('svg.china-map path.prov').count(), 34);
-    assert.equal(await A.locator('svg.china-map .dashes, svg.china-map .marker, svg.china-map line').count(), 0);
-    assert.deepEqual(await A.$$eval('svg.china-map text', (els) => els.map((e) => e.textContent)), ['南海诸岛']); // 不显示省名
-    assert.equal(await A.locator('svg.china-map .dots .dot').count(), 2);
+    assert.equal(await A.locator('svg.china-map .dashes').count(), 0);
+    assert.equal(await A.locator('svg.china-map .marker').count(), 2); // 只有港澳有标注，台湾没有
+    assert.equal(await A.locator('svg.china-map .marker[data-id="A09"]').count(), 0);
+    assert.deepEqual((await A.$$eval('svg.china-map text', (els) => els.map((e) => e.textContent))).sort(), ['南海诸岛', '澳门', '香港'].sort()); // 不显示省名
     assert.equal(await A.evaluate(() => getComputedStyle(document.querySelector('.map-stage')).transform), 'none'); // 横屏不旋转
     const litL1 = await A.evaluate(() => window.__app.regions.level1.filter((id) => window.__app.lit.has(id)).sort());
     const litPaths = await A.$$eval('svg.china-map path.prov.lit', (els) => els.map((e) => e.dataset.id).sort());
@@ -728,7 +729,7 @@ try {
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零三")');
     assert.equal(await A.textContent('.map-info'), '虚零三　2023.05.01 点亮');
-    // 南海诸岛：台湾右侧小框，点击显示所属区域
+    // 位置：台湾 < 港澳标注 < 南海诸岛小框；引线不穿过台湾
     assert.equal(await A.locator('svg.china-map .inset .isle').count(), 2);
     const bb = (e) => {
       const b = e.getBBox();
@@ -736,25 +737,41 @@ try {
     };
     const inset = await A.$eval('svg.china-map .inset .frame', bb);
     const tw = await A.$eval('svg.china-map path.prov[data-id="A09"]', bb);
-    assert.ok(inset.x >= tw.x + tw.width, `小框在台湾右侧 ${JSON.stringify([inset, tw])}`);
+    const labels = await A.$$eval('svg.china-map .marker rect', (els) => els.map((e) => {
+      const b = e.getBBox();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    }));
+    for (const l of labels) {
+      assert.ok(l.x >= tw.x + tw.width, `标注在台湾右侧 ${JSON.stringify([l, tw])}`);
+      assert.ok(l.x + l.width <= inset.x, `标注在南海诸岛左侧 ${JSON.stringify([l, inset])}`);
+    }
+    const crosses = await A.$$eval('svg.china-map .marker line', (els, t) => els.some((e) => {
+      const [x1, y1, x2, y2] = ['x1', 'y1', 'x2', 'y2'].map((k) => Number(e.getAttribute(k)));
+      for (let i = 0; i <= 100; i++) {
+        const x = x1 + ((x2 - x1) * i) / 100;
+        const y = y1 + ((y2 - y1) * i) / 100;
+        if (x > t.x && x < t.x + t.width && y > t.y && y < t.y + t.height) return true;
+      }
+      return false;
+    }), tw);
+    assert.equal(crosses, false, '引线不穿过台湾');
     await A.click('svg.china-map .inset .frame', { force: true });
     await A.waitForSelector('.map-info:has-text("虚二一")');
-        // 台湾：普通区域，直接点击
+    // 台湾：普通区域，直接点击
     await A.click('svg.china-map path.prov[data-id="A09"]', { force: true });
     await A.waitForSelector('.map-info:has-text("台湾")');
     assert.equal(await A.textContent('.map-info'), '台湾　未点亮');
-    // 港澳：点小点附近的热区，同时显示两地各自状态
-    const dotLit = await A.$$eval('svg.china-map .dots .dot', (els) => els.map((e) => [e.dataset.id, e.classList.contains('lit')]));
-    await A.click('svg.china-map .dots .hot', { force: true });
-    await A.waitForSelector('.map-info:has-text("香港")');
-    const lines = await A.$$eval('.map-info p', (els) => els.map((e) => e.textContent));
-    const expectLines = await A.evaluate((ids) => ids.map(([id]) => {
-      const app = window.__app;
-      const d = app.lit.has(id) ? app.litDate(id) : null;
-      return `${app.regionName(id)}　${d ? `${d.replace(/-/g, '.')} 点亮` : '暂未点亮'}`;
-    }), dotLit);
-    assert.deepEqual(lines, expectLines);
-    assert.deepEqual(dotLit.map(([, l]) => l), await A.evaluate((ids) => ids.map(([id]) => window.__app.lit.has(id)), dotLit));
+    // 港澳：点标注，显示该地区的名称与点亮日期/未点亮，亮暗跟随首页
+    for (const id of ['A01', 'A02']) {
+      await A.click(`svg.china-map .marker[data-id="${id}"] rect`, { force: true });
+      const expect = await A.evaluate((i) => {
+        const app = window.__app;
+        const d = app.lit.has(i) ? app.litDate(i) : null;
+        return { text: `${app.regionName(i)}　${app.lit.has(i) ? `${d.replace(/-/g, '.')} 点亮` : '未点亮'}`, lit: app.lit.has(i) };
+      }, id);
+      await A.waitForFunction((t) => document.querySelector('.map-info').textContent === t, expect.text);
+      assert.equal(await A.$eval(`svg.china-map .marker[data-id="${id}"]`, (e) => e.classList.contains('lit')), expect.lit);
+    }
     assert.equal(await A.locator('.toolbar, button:text-is("修改点亮时间")').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'map.png'), fullPage: true });
   });

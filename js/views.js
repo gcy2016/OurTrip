@@ -33,28 +33,18 @@ async function loadMap(app) {
   app.render();
 }
 
-const HKMO = '__dots__'; // 香港、澳门共用的点击热区
-
-function litText(app, id, unlitText) {
-  if (!app.lit.has(id)) return unlitText;
-  const date = app.litDate(id);
-  return date ? `${dotted(date)} 点亮` : '已点亮';
-}
-
-function regionInfo(app, sel, dots) {
+function regionInfo(app, sel) {
   if (!sel) return h('div', { class: 'map-info muted' }, '点地图上的区域查看点亮时间');
-  // 港澳：同时显示两地各自的状态和时间
-  if (sel === HKMO) {
-    return h(
-      'div',
-      { class: 'map-info', role: 'status' },
-      dots.map((id) => h('p', { class: app.lit.has(id) ? 'lit' : '' }, h('strong', null, app.regionName(id)), `　${litText(app, id, '暂未点亮')}`))
-    );
-  }
-  return h('div', { class: 'map-info', role: 'status' }, h('p', { class: app.lit.has(sel) ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${litText(app, sel, '未点亮')}`));
+  const lit = app.lit.has(sel);
+  const date = lit ? app.litDate(sel) : null;
+  return h(
+    'div',
+    { class: 'map-info', role: 'status' },
+    h('p', { class: lit ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${lit ? (date ? `${dotted(date)} 点亮` : '已点亮') : '未点亮'}`)
+  );
 }
 
-/** 面积很小、在全国地图上看不清的区域（港澳）：在原位置画成小点。依据形状大小判断，不依赖名称 */
+/** 面积很小、在全国地图上看不清的区域（港澳）：在地图外加标注。依据形状大小判断，不依赖名称 */
 function smallRegions(data, vw) {
   return (data.markers || []).filter((id) => {
     const d = data.regions[id];
@@ -62,6 +52,16 @@ function smallRegions(data, vw) {
     const b = pathBBox(d);
     return Math.max(b.w, b.h) < vw * 0.02;
   });
+}
+
+/** 线段是否穿过矩形（向外扩 margin）：用采样判断，足够精确 */
+function segmentHitsBox(x1, y1, x2, y2, b, margin) {
+  for (let i = 0; i <= 60; i++) {
+    const x = x1 + ((x2 - x1) * i) / 60;
+    const y = y1 + ((y2 - y1) * i) / 60;
+    if (x > b.x - margin && x < b.x + b.w + margin && y > b.y - margin && y < b.y + b.h + margin) return true;
+  }
+  return false;
 }
 
 function boxGap(a, b) {
@@ -135,20 +135,26 @@ function drawMap(app, data) {
   }
   root.appendChild(g);
 
+  // 台湾等较大的标注区域直接显示，不另加标注；港澳在台湾右侧、南海诸岛小框左侧列出标注
+  const big = (data.markers || []).filter((id) => regions[id] && !dots.includes(id)).map((id) => pathBBox(regions[id]));
+  const gap = vw * 0.02;
+  const right = box.x + box.w;
+  const bottom = box.y + box.h;
+  const labelW = vw * 0.07;
+  const lh = vw * 0.028;
+  const bigRight = big.length ? Math.max(...big.map((b) => b.x + b.w)) : right - vw * 0.25;
+  const labelX = bigRight + gap;
+
   if (islands.length) {
-    // 南海诸岛小框：放在台湾右侧到地图右边界之间的海面上，不占用大陆的显示空间
-    const big = (data.markers || []).filter((id) => regions[id] && !dots.includes(id)).map((id) => pathBBox(regions[id]));
+    // 南海诸岛小框：港澳标注右侧到地图右边界之间的海面上，不占用大陆的显示空间
     const ib = pathBBox(islands.join(' '));
-    const gap = vw * 0.02;
-    const right = box.x + box.w;
-    const bottom = box.y + box.h;
-    const left = big.length ? Math.max(...big.map((b) => b.x + b.w)) + gap : right - vw * 0.14;
+    const left = labelX + (dots.length ? labelW + gap : 0);
     const top = big.length ? Math.min(...big.map((b) => b.y)) : bottom - vh * 0.3;
     const fw = right - left;
     const fh = bottom - top;
     const k = Math.min((fw * 0.86) / ib.w, (fh * 0.8) / ib.h);
-    const fwUsed = ib.w * k / 0.86;
-    const fhUsed = ib.h * k / 0.8;
+    const fwUsed = (ib.w * k) / 0.86;
+    const fhUsed = (ib.h * k) / 0.8;
     const fx = right - fwUsed;
     const fy = bottom - fhUsed;
     const lit = app.lit.has(islandsOf);
@@ -165,20 +171,29 @@ function drawMap(app, data) {
   }
 
   if (dots.length) {
-    // 港澳：原位置两个小点，点亮后发亮；两点附近一个共同的点击热区
-    const pts = dots.map((id) => {
-      const b = pathBBox(regions[id]);
-      return { id, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
-    });
-    const cx = pts.reduce((t, p) => t + p.cx, 0) / pts.length;
-    const cy = pts.reduce((t, p) => t + p.cy, 0) / pts.length;
-    const spread = Math.max(...pts.map((p) => Math.hypot(p.cx - cx, p.cy - cy)));
-    const r = Math.max(spread + vw * 0.012, vw * 0.022);
-    const hot = svg('g', { class: `dots${selected === HKMO ? ' sel' : ''}`, 'data-id': HKMO, tabindex: 0, role: 'button', 'aria-label': dots.map((id) => app.regionName(id)).join('、') });
-    hot.appendChild(svg('circle', { class: 'hot', cx, cy, r }));
-    for (const p of pts) hot.appendChild(svg('circle', { class: `dot${app.lit.has(p.id) ? ' lit' : ''}`, 'data-id': p.id, cx: p.cx, cy: p.cy, r: vw * 0.0055 }));
-    bind(hot, HKMO);
-    root.appendChild(hot);
+    // 港澳：原位置一个小圆点，引线连到右侧的名称标注；引线绕开台湾（从台湾下方经过）
+    const pts = dots
+      .map((id) => {
+        const b = pathBBox(regions[id]);
+        return { id, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
+      })
+      .sort((a, b) => a.cy - b.cy);
+    const maxY = vy + vh - lh;
+    let lastY = -Infinity;
+    for (const pt of pts) {
+      let y = Math.max(pt.cy - lh / 2, lastY + lh * 1.3);
+      while (y < maxY && big.some((b) => segmentHitsBox(pt.cx, pt.cy, labelX, y + lh / 2, b, gap * 0.3))) y += lh * 0.25;
+      y = Math.min(y, maxY);
+      lastY = y;
+      const lit = app.lit.has(pt.id);
+      const mg = svg('g', { class: `marker${lit ? ' lit' : ''}${selected === pt.id ? ' sel' : ''}`, 'data-id': pt.id, tabindex: 0, role: 'button', 'aria-label': app.regionName(pt.id) });
+      mg.appendChild(svg('line', { x1: pt.cx, y1: pt.cy, x2: labelX, y2: y + lh / 2 }));
+      mg.appendChild(svg('circle', { cx: pt.cx, cy: pt.cy, r: vw * 0.004 }));
+      mg.appendChild(svg('rect', { x: labelX, y, width: labelW, height: lh, rx: lh * 0.3 }));
+      mg.appendChild(svg('text', { x: labelX + labelW / 2, y: y + lh * 0.7, 'font-size': lh * 0.6, 'text-anchor': 'middle' }, app.regionName(pt.id)));
+      bind(mg, pt.id);
+      root.appendChild(mg);
+    }
   }
   return { root, dots };
 }
@@ -200,8 +215,8 @@ export function mapView(app) {
   else if (mapState.status === 'error') {
     body = h('div', { class: 'empty' }, `地图载入失败：${mapState.error}`, h('div', null, h('button', { class: 'btn btn-small', onclick: () => loadMap(app) }, '重试')));
   } else {
-    if (selected && selected !== HKMO && !app.regions.byId.has(selected)) selected = null;
-    const { root, dots } = drawMap(app, mapState.data);
+    if (selected && !app.regions.byId.has(selected)) selected = null;
+    const { root } = drawMap(app, mapState.data);
     body = h(
       'div',
       { class: 'map-body' },
@@ -209,7 +224,7 @@ export function mapView(app) {
       h(
         'div',
         { class: 'map-side' },
-        regionInfo(app, selected, dots),
+        regionInfo(app, selected),
         h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
       )
     );
