@@ -4,6 +4,15 @@
    主色只用作点缀：实色用于主按钮，其余用主色的淡色（tint）。
    ========================================================================= */
 
+/* 区域名称字体：马善政毛笔体（本地 woff2，用户 2026-10-16 选定） */
+@font-face {
+  font-family: 'MaShanZheng';
+  src: url('MaShanZheng-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
 
@@ -40,11 +49,11 @@
   --shadow-pop: 0 24px 60px rgba(15, 23, 42, 0.18), 0 4px 14px rgba(15, 23, 42, 0.08);
 
   /* 区域名称字号（由 Muse 调整）：
-     --name-l1-max / --name-l2-max：一级（省）/ 二级（市）名称的最大字号，cqh = 方框高度的 1%，20cqh 即 1/5；
+     --name-l1-max / --name-l2-max：一级（省）/ 二级（市）名称的最大字号，cqh = 方框高度的 1%，16.67cqh 即 1/6；
      --name-fit：名称较长时的缩小系数，越大字越小（名称都要能放进方框宽度）；
      --name-weight：字重（400 常规，700 粗体）；--name-lines：最多显示几行。 */
-  --name-l1-max: 20cqh;
-  --name-l2-max: 20cqh;
+  --name-l1-max: 16.67cqh;
+  --name-l2-max: 16.67cqh;
   --name-fit: 1.1;
   --name-weight: 500;
   --name-lines: 2;
@@ -1174,7 +1183,7 @@ textarea.input {
 }
 
 /* =========================================================================
-   区域名称大字号：最大为方框高度的 1/5，名称越长字越小，最多两行
+   区域名称大字号：最大为方框高度的 1/6，名称越长字越小，最多两行
    字号在 :root 的 --name-* 变量里调整，这里一般不用改
    ========================================================================= */
 
@@ -1184,6 +1193,7 @@ textarea.input {
 
 .tile.region .tile-title {
   --name-max: var(--name-l2-max);
+  font-family: 'MaShanZheng', 'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', serif;
   font-size: min(var(--name-max), calc((100cqw - 28px) / (var(--name-w, 2) * var(--name-fit))));
   line-height: 1.12;
   font-weight: var(--name-weight);
