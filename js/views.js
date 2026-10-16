@@ -2,7 +2,7 @@
 
 import { h } from './ui.js';
 import { litDateRegions } from './album.js';
-import { MAP_KEY, validMapData, pathBBox } from './region-names.js';
+import { MAP_KEY, validMapData, pathBBox, L2_INDEX_KEY, l2Key, validL2Data, labelPoint } from './region-names.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -19,6 +19,9 @@ const dotted = (date) => date.replace(/-/g, '.');
 
 let mapState = { status: 'idle', data: null, error: '' }; // idle | loading | ready | missing | error
 let selected = null;
+let selected2 = null; // 二级地图里选中的二级区域
+let l2Index = new Set(); // 已上传二级地图的一级区域
+const l2Cache = new Map(); // 一级区域 → { status, data, error }
 
 async function loadMap(app) {
   mapState = { status: 'loading', data: null, error: '' };
@@ -27,6 +30,12 @@ async function loadMap(app) {
     if (!rec) mapState = { status: 'missing', data: null, error: '' };
     else if (!validMapData(rec.data)) mapState = { status: 'error', data: null, error: '地图文件格式不正确' };
     else mapState = { status: 'ready', data: rec.data, error: '' };
+    try {
+      const idx = await app.store.getJSON(L2_INDEX_KEY);
+      l2Index = new Set((idx && idx.data && idx.data.ids) || []);
+    } catch {
+      l2Index = new Set(); // 读不到二级地图目录时只显示全国地图
+    }
   } catch (e) {
     mapState = { status: 'error', data: null, error: e.message || '读取失败' };
   }
@@ -37,10 +46,14 @@ function regionInfo(app, sel) {
   if (!sel) return h('div', { class: 'map-info muted' }, '点地图上的区域查看点亮时间');
   const lit = app.lit.has(sel);
   const date = lit ? app.litDate(sel) : null;
+  const r = app.regions.byId.get(sel);
+  // 已点亮、有二级区域且已上传二级地图的省份：可以展开二级地图（提示内容不变）
+  const canOpen = lit && r && r.level === 1 && r.children.length > 0 && l2Index.has(sel);
   return h(
     'div',
     { class: 'map-info', role: 'status' },
-    h('p', { class: lit ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${lit ? (date ? `${dotted(date)} 点亮` : '已点亮') : '未点亮'}`)
+    h('p', { class: lit ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${lit ? (date ? `${dotted(date)} 点亮` : '已点亮') : '未点亮'}`),
+    canOpen ? h('a', { class: 'btn btn-small btn-primary l2-open', href: `#/map/${sel}` }, '查看二级地图') : null
   );
 }
 
@@ -198,8 +211,9 @@ function drawMap(app, data) {
   return { root, dots };
 }
 
-export function mapView(app) {
+export function mapView(app, l1Id = null) {
   if (mapState.status === 'idle') loadMap(app);
+  if (l1Id && mapState.status === 'ready') return l2View(app, l1Id);
   const level1 = app.regions.level1;
   const litCount = level1.filter((id) => app.lit.has(id)).length;
   const head = h(
@@ -233,10 +247,99 @@ export function mapView(app) {
   return h('section', { class: 'map-stage' }, head, body);
 }
 
+// ---------- 二级地图（点亮的省份展开） ----------
+
+async function loadL2(app, l1Id) {
+  l2Cache.set(l1Id, { status: 'loading' });
+  try {
+    const rec = await app.store.getJSON(l2Key(l1Id));
+    if (!rec) l2Cache.set(l1Id, { status: 'missing' });
+    else if (!validL2Data(rec.data, l1Id)) l2Cache.set(l1Id, { status: 'error', error: '二级地图文件格式不正确' });
+    else l2Cache.set(l1Id, { status: 'ready', data: rec.data });
+  } catch (e) {
+    l2Cache.set(l1Id, { status: 'error', error: e.message || '读取失败' });
+  }
+  app.render();
+}
+
+function drawL2(app, data, dateInMap) {
+  const [vx, vy, vw, vh] = data.viewBox;
+  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map l2-map', role: 'img', 'aria-label': '二级区域地图' });
+  const pick = (id) => {
+    selected2 = id;
+    app.render();
+  };
+  const g = svg('g', { class: 'provinces' });
+  for (const d of data.others || []) g.appendChild(svg('path', { d, class: 'other' }));
+  const entries = Object.entries(data.regions).sort((x, y) => (x[0] === selected2) - (y[0] === selected2));
+  for (const [id, d] of entries) {
+    const p = svg('path', { d, class: `prov${app.lit.has(id) ? ' lit' : ''}${selected2 === id ? ' sel' : ''}`, 'data-id': id, tabindex: 0, role: 'button', 'aria-label': app.regionName(id) });
+    p.addEventListener('click', () => pick(id));
+    p.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && pick(id));
+    g.appendChild(p);
+  }
+  root.appendChild(g);
+  // 所有二级区域都显示名称（不论是否点亮）；字号随区域大小缩放
+  const labels = svg('g', { class: 'l2-labels' });
+  const base = Math.max(vw, vh) * 0.026;
+  for (const [id, d] of Object.entries(data.regions)) {
+    const b = pathBBox(d);
+    const pt = labelPoint(d);
+    const name = app.regionName(id);
+    const fs = Math.max(base * 0.55, Math.min(base, (b.w * 0.8) / Math.max(2, [...name].length), b.h * 0.35));
+    const lit = app.lit.has(id);
+    const date = lit ? app.litDate(id) : null;
+    const showDate = dateInMap && date;
+    labels.appendChild(svg('text', { x: pt.x, y: showDate ? pt.y - fs * 0.15 : pt.y + fs * 0.35, 'font-size': fs, 'text-anchor': 'middle', class: lit ? 'lit' : '' }, name));
+    if (showDate) labels.appendChild(svg('text', { x: pt.x, y: pt.y + fs * 0.85, 'font-size': fs * 0.62, 'text-anchor': 'middle', class: 'date' }, dotted(date)));
+  }
+  root.appendChild(labels);
+  return root;
+}
+
+function l2View(app, l1Id) {
+  const r = app.regions.byId.get(l1Id);
+  if (!r || !r.children.length) return h('section', { class: 'map-stage' }, h('div', { class: 'empty' }, '这个区域没有二级地图。', h('a', { class: 'btn btn-small', href: '#/map' }, '返回地图')));
+  const st = l2Cache.get(l1Id);
+  if (!st) loadL2(app, l1Id);
+  const litKids = r.children.filter((c) => app.lit.has(c)).length;
+  const head = h(
+    'div',
+    { class: 'map-head' },
+    h('a', { class: 'btn btn-small', href: '#/map' }, '‹ 全国'),
+    h('h1', null, app.regionName(l1Id)),
+    h('span', { class: 'sub' }, `已点亮 ${litKids}/${r.children.length} 个二级区域`)
+  );
+  // 点亮时间的显示方式：A 直接写在区域内；B 点击区域后显示（默认）
+  const dateInMap = (app.l2DateMode || 'B') === 'A';
+  let body;
+  if (!st || st.status === 'loading') body = h('p', { class: 'muted' }, '正在载入二级地图…');
+  else if (st.status === 'missing') body = h('div', { class: 'empty' }, '这个省的二级地图尚未上传。');
+  else if (st.status === 'error') body = h('div', { class: 'empty' }, `二级地图载入失败：${st.error}`, h('div', null, h('button', { class: 'btn btn-small', onclick: () => loadL2(app, l1Id) }, '重试')));
+  else {
+    if (selected2 && !st.data.regions[selected2]) selected2 = null;
+    body = h(
+      'div',
+      { class: 'map-body' },
+      h('div', { class: 'map-canvas' }, drawL2(app, st.data, dateInMap)),
+      h(
+        'div',
+        { class: 'map-side' },
+        regionInfo(app, selected2),
+        h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
+      )
+    );
+  }
+  return h('section', { class: 'map-stage' }, head, body);
+}
+
 /** 退出登录或换账号时清空缓存的地图 */
 export function resetViews() {
   mapState = { status: 'idle', data: null, error: '' };
   selected = null;
+  selected2 = null;
+  l2Index = new Set();
+  l2Cache.clear();
 }
 
 // ---------- 时间线 ----------

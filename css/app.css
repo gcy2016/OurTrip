@@ -1368,6 +1368,40 @@ textarea.input {
   stroke-width: 0.3;
 }
 
+/* 二级地图：所有二级区域显示名称；不在 333 个二级区域里的块显示为灰色 */
+.china-map .other {
+  fill: #e4e8ee;
+  stroke: #ffffff;
+  stroke-width: 0.03;
+}
+
+.china-map.l2-map .prov {
+  stroke-width: 0.03;
+}
+
+.china-map.l2-map .prov.sel {
+  stroke-width: 0.06;
+}
+
+.l2-labels text {
+  fill: var(--text);
+  font-weight: 600;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.8);
+  stroke-width: 0.03;
+}
+
+.l2-labels text.date {
+  font-weight: 400;
+  fill: var(--text-secondary);
+}
+
+.map-info .l2-open {
+  margin-top: 6px;
+  pointer-events: auto;
+}
+
 /* 南海诸岛小框（台湾右侧），亮暗跟随所属区域 */
 .china-map .inset {
   cursor: pointer;

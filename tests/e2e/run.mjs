@@ -7,7 +7,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { loadRegionMap } from '../unit/helpers.mjs';
-import { makeFakeMap, encryptMap, makeFakeSvg, FAKE_PASSWORD } from '../fixtures/fake-region-map.mjs';
+import { makeFakeMap, encryptMap, makeFakeSvg, makeFakeL2Svg, FAKE_PASSWORD } from '../fixtures/fake-region-map.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -691,6 +691,7 @@ try {
     await M.waitForSelector('.error-text:has-text("映射密码不正确")', { timeout: 20000 });
     await M.fill('input[placeholder="映射文件密码"]', FAKE_PASSWORD);
     await M.setInputFiles('input[aria-label="地图 SVG 文件"]', { name: 'china-boundary.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(makeFakeSvg(fake)) });
+    await M.setInputFiles('input[aria-label="二级地图 SVG 文件"]', [{ name: 'l2-a03.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(makeFakeL2Svg(fake, 'A03')) }]);
     await M.click('button:text-is("解密并预览")');
     await M.waitForSelector('h3:text("预览")', { timeout: 20000 });
     assert.equal(await M.inputValue('input[placeholder="映射文件密码"]'), '');
@@ -698,8 +699,10 @@ try {
     assert.match(pv, /区域名称 367 个/);
     assert.match(pv, /A07 重名省、A07-C02 重名市/);
     assert.match(pv, /34 个一级区域已对应（九段线不显示）/);
+    assert.match(pv, /二级地图 1 个省：虚零三（11 个二级区域）/);
     await M.click('button:text-is("上传到存储桶")');
     await M.waitForSelector('text=已上传区域名称 367 个');
+    await M.waitForSelector('text=已上传二级地图 1 个省');
     await M.screenshot({ path: join(SHOTS, 'admin-names.png'), fullPage: true });
     await M.close();
     await A.goto(`${BASE}#/`);
@@ -728,7 +731,7 @@ try {
     assert.deepEqual(litPaths, litL1);
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零三")');
-    assert.equal(await A.textContent('.map-info'), '虚零三　2023.05.01 点亮');
+    assert.equal(await A.textContent('.map-info p'), '虚零三　2023.05.01 点亮');
     // 位置：台湾 < 港澳标注 < 南海诸岛小框；引线不穿过台湾
     assert.equal(await A.locator('svg.china-map .inset .isle').count(), 2);
     const bb = (e) => {
@@ -774,6 +777,40 @@ try {
     }
     assert.equal(await A.locator('.toolbar, button:text-is("修改点亮时间")').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'map.png'), fullPage: true });
+  });
+
+  await step('二级地图：点亮且有二级地图的省份可展开；显示全部名称、点亮着色、点击看日期；未点亮或无数据的不提供', async () => {
+    await A.goto(`${BASE}#/map`);
+    await A.waitForSelector('svg.china-map path.prov');
+    // 已点亮但没有二级地图（A07）：不提供展开
+    await A.click('svg.china-map path.prov[data-id="A07"]', { force: true });
+    await A.waitForSelector('.map-info:has-text("重名省")');
+    assert.equal(await A.locator('.l2-open').count(), 0);
+    // 未点亮（A04）：不提供展开
+    await A.click('svg.china-map path.prov[data-id="A04"]', { force: true });
+    await A.waitForSelector('.map-info:has-text("虚零四")');
+    assert.equal(await A.locator('.l2-open').count(), 0);
+    // 已点亮且有二级地图（A03）：提示内容不变，另有“查看二级地图”
+    await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
+    await A.waitForSelector('.l2-open');
+    assert.match(await A.textContent('.map-info p'), /^虚零三　2023\.05\.01 点亮$/);
+    await A.click('.l2-open');
+    await A.waitForSelector('.l2-map path.prov');
+    assert.equal(await A.locator('.l2-map path.prov').count(), 11);
+    assert.equal(await A.locator('.l2-map path.other').count(), 1);
+    const names = await A.$$eval('.l2-labels text', (els) => els.map((e) => e.textContent));
+    assert.equal(names.length, 11); // 所有二级区域都显示名称
+    assert.ok(names.includes('零三零一') && names.includes('零三一一'));
+    const litIds = await A.$$eval('.l2-map path.prov.lit', (els) => els.map((e) => e.dataset.id));
+    const expectLit = await A.evaluate(() => window.__app.regions.byId.get('A03').children.filter((c) => window.__app.lit.has(c)));
+    assert.deepEqual(litIds.sort(), expectLit.sort());
+    await A.click('.l2-map path.prov[data-id="A03-C01"]', { force: true });
+    await A.waitForFunction(() => document.querySelector('.map-info').textContent === '零三零一　2023.05.01 点亮');
+    await A.click('.l2-map path.prov[data-id="A03-C05"]', { force: true });
+    await A.waitForFunction(() => document.querySelector('.map-info').textContent === '零三零五　未点亮');
+    await A.screenshot({ path: join(SHOTS, 'map-l2.png') });
+    await A.click('.map-head a:has-text("全国")');
+    await A.waitForSelector('svg.china-map:not(.l2-map) path.prov');
   });
 
   await step('时间线页：按点亮日期排列，距离与时间成比例，复用区域方框显示名称和日期', async () => {

@@ -386,8 +386,8 @@ let namesPreview = null; // { names, full, mapData, problems, version }
 
 async function loadNamesInfo() {
   try {
-    const [n, m] = await Promise.all([store.getJSON(N.NAMES_KEY), store.getJSON(N.MAP_KEY)]);
-    namesInfo = { names: n && n.data, map: m && m.data };
+    const [n, m, l2] = await Promise.all([store.getJSON(N.NAMES_KEY), store.getJSON(N.MAP_KEY), store.getJSON(N.L2_INDEX_KEY)]);
+    namesInfo = { names: n && n.data, map: m && m.data, l2: l2 && l2.data };
   } catch (e) {
     namesInfo = { error: e.message };
   }
@@ -405,6 +405,7 @@ function namesSection() {
   const encInput = h('input', { type: 'file', accept: '.json,application/json', 'aria-label': '加密映射文件' });
   const pw = h('input', { class: 'input', type: 'password', placeholder: '映射文件密码', autocomplete: 'off' });
   const svgInput = h('input', { type: 'file', accept: '.svg,image/svg+xml', 'aria-label': '地图 SVG 文件' });
+  const l2Input = h('input', { type: 'file', accept: '.svg,image/svg+xml', multiple: true, 'aria-label': '二级地图 SVG 文件' });
   const err = h('p', { class: 'error-text', role: 'status' });
   const status = [];
   if (namesInfo && namesInfo.error) status.push(h('p', { class: 'error-text' }, `读取失败：${namesInfo.error}`));
@@ -413,7 +414,8 @@ function namesSection() {
     const m = namesInfo.map;
     status.push(
       h('p', null, n && n.names ? `已上传区域名称 ${Object.keys(n.names).length} 个（${formatTime(n.uploadedAt)}）` : '尚未上传区域名称，网页上显示区域编号。'),
-      h('p', null, m && m.regions ? `已上传地图（${Object.keys(m.regions).length} 个一级区域，${formatTime(m.uploadedAt)}）` : '尚未上传地图，网页上的“地图”页暂时无法显示。')
+      h('p', null, m && m.regions ? `已上传地图（${Object.keys(m.regions).length} 个一级区域，${formatTime(m.uploadedAt)}）` : '尚未上传地图，网页上的“地图”页暂时无法显示。'),
+      h('p', null, namesInfo.l2 && namesInfo.l2.ids && namesInfo.l2.ids.length ? `已上传二级地图 ${namesInfo.l2.ids.length} 个省` : '尚未上传二级地图。')
     );
   }
   const preview = [];
@@ -427,6 +429,9 @@ function namesSection() {
       h('p', { class: 'dialog-hint' }, `一级区域：${l1}`),
       changed.length ? h('p', { class: 'dialog-hint' }, `为区分重名加了“省/市/州”：${changed.map((id) => `${id} ${p.names[id]}`).join('、')}`) : null,
       p.mapData ? h('p', null, `地图：${Object.keys(p.mapData.regions).length} 个一级区域已对应（九段线不显示）。`) : h('p', { class: 'muted' }, '未选择地图文件，本次只上传名称。'),
+      p.l2.length
+        ? h('p', null, `二级地图 ${p.l2.length} 个省：${p.l2.map((x) => `${p.names[x.l1Id]}（${Object.keys(x.data.regions).length} 个二级区域）`).join('、')}`)
+        : null,
       p.problems.length ? h('ul', { class: 'error-text' }, p.problems.map((x) => h('li', null, x))) : null,
       h(
         'div',
@@ -442,6 +447,13 @@ function namesSection() {
                 const at = store.now();
                 await store.putJSON(N.NAMES_KEY, { format: N.NAMES_FORMAT, version: p.version, names: p.names, uploadedAt: at });
                 if (p.mapData) await store.putJSON(N.MAP_KEY, { ...p.mapData, uploadedAt: at });
+                if (p.l2.length) {
+                  for (const x of p.l2) await store.putJSON(N.l2Key(x.l1Id), { ...x.data, uploadedAt: at });
+                  const old = await store.getJSON(N.L2_INDEX_KEY);
+                  const ids = new Set((old && old.data && old.data.ids) || []);
+                  for (const x of p.l2) ids.add(x.l1Id);
+                  await store.putJSON(N.L2_INDEX_KEY, { ids: [...ids].sort(), uploadedAt: at });
+                }
                 namesPreview = null;
                 toast('已上传，网页刷新后生效', 'ok');
                 await loadNamesInfo();
@@ -464,6 +476,7 @@ function namesSection() {
     h('label', { class: 'field-label' }, '加密映射文件 ', encInput),
     pw,
     h('label', { class: 'field-label' }, '地图 SVG（可选） ', svgInput),
+    h('label', { class: 'field-label' }, '二级地图 SVG（可选，可多选，每省一个文件） ', l2Input),
     h(
       'button',
       {
@@ -490,7 +503,15 @@ function namesSection() {
               problems.push(...r.problems);
               mapData = r.data;
             }
-            namesPreview = { names, full, mapData, problems, version: enc.version || null };
+            const l2 = [];
+            for (const f of l2Input.files || []) {
+              const r = N.parseLevel2Svg(await f.text(), map);
+              problems.push(...r.problems.map((x) => `${f.name}：${x}`));
+              if (!r.data) continue;
+              if (l2.some((x) => x.l1Id === r.l1Id)) problems.push(`${f.name}：与另一个文件是同一个省`);
+              l2.push(r);
+            }
+            namesPreview = { names, full, mapData, l2, problems, version: enc.version || null };
             render();
           } catch (x) {
             err.textContent = x instanceof SyntaxError ? '文件格式不正确' : x.message;

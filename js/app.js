@@ -440,6 +440,7 @@ function parseRoute() {
   const m = /^#\/(r|b)\/([\w-]+)$/.exec(location.hash);
   if (m) app.route = { kind: m[1] === 'r' ? 'region' : 'box', id: m[2] };
   else if (location.hash === '#/map') app.route = { kind: 'map', id: null };
+  else if (/^#\/map\/A\d{2}$/.test(location.hash)) app.route = { kind: 'map', id: location.hash.slice(6) };
   else if (location.hash === '#/timeline') app.route = { kind: 'timeline', id: null };
   else app.route = { kind: 'home', id: null };
 }
@@ -561,7 +562,7 @@ function mainView() {
   A.syncLitTimes(app.litView, app.regions, app.store.now());
   let page;
   const { kind, id } = app.route;
-  if (kind === 'map') page = mapView(app);
+  if (kind === 'map') page = mapView(app, id);
   else if (kind === 'timeline') page = timelineView(app);
   else if (kind === 'region' && app.regions.byId.has(id)) {
     page = isContentRegion(app.regions, id) ? containerView(id) : level1View(id);

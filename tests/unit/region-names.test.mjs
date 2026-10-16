@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as N from '../../js/region-names.js';
 import { loadRegionMap } from './helpers.mjs';
-import { makeFakeMap, encryptMap, makeFakeSvg, FAKE_PASSWORD } from '../fixtures/fake-region-map.mjs';
+import { makeFakeMap, encryptMap, makeFakeSvg, makeFakeL2Svg, FAKE_PASSWORD } from '../fixtures/fake-region-map.mjs';
 
 const anon = loadRegionMap();
 
@@ -86,4 +86,21 @@ test('南海诸岛：从最南端区域中分出远离主体的小岛，主图�
   // 没有远离主体的小岛时原样返回
   const plain = { A01: 'M0,0L1,0L1,1Z', A02: 'M2,2L3,2L3,3Z M3,3L3.2,3L3.2,3.1Z' };
   assert.deepEqual(splitIslands(plain).islands, []);
+});
+
+test('二级地图：自动识别省份，二级区域按名称对应，多出的块放进 others；名称位置落在区域内', () => {
+  const map = makeFakeMap(anon);
+  const r = N.parseLevel2Svg(makeFakeL2Svg(map, 'A16'), map);
+  assert.equal(r.l1Id, 'A16');
+  assert.deepEqual(r.problems, []);
+  assert.deepEqual(Object.keys(r.data.regions).sort(), anon.level1.find((x) => x.id === 'A16').children.slice().sort());
+  assert.equal(r.data.others.length, 1);
+  assert.ok(N.validL2Data(r.data, 'A16'));
+  assert.equal(N.validL2Data(r.data, 'A15'), false);
+  // 缺一个二级区域时报告问题
+  const svg = makeFakeL2Svg(map, 'A16').replace(/<path id="c0"[^>]*>/, '');
+  assert.ok(N.parseLevel2Svg(svg, map).problems.some((p) => p.includes('A16-C01')));
+  // 名称位置：凹形（L 形）区域取区域内的点
+  const p = N.labelPoint('M0,0L10,0L10,1L1,1L1,10L0,10Z');
+  assert.ok((p.x <= 1 && p.y <= 10) || (p.y <= 1 && p.x <= 10), JSON.stringify(p));
 });

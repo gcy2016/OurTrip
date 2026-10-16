@@ -80,3 +80,20 @@ ${paths.join('\n')}
 <g id="jiuduanxian"><path d="M44,38L45,39L44,38ZM42,41L42,42L42,41Z"/></g>
 </svg>`;
 }
+
+/** 虚构的某省二级地图：每个二级区域一个方块，另加一块不在二级区域里的“直辖县”（应显示为灰色） */
+export function makeFakeL2Svg(map, l1Id) {
+  const l1 = map.level1.find((x) => x.id === l1Id);
+  const paths = l1.children.map((c, i) => {
+    const x = 30 + (i % 5) * 1.2;
+    const y = 17 + Math.floor(i / 5) * 1.2;
+    return `<path id="c${i}" data-name="${c.name}" d="M${x},${y}L${x + 1.1},${y}L${x + 1.1},${y + 1.1}L${x},${y + 1.1}Z"/>`;
+  });
+  paths.push('<path id="x1" data-name="某直辖县" d="M36.2,17L37,17L37,17.8L36.2,17.8Z"/>');
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 17 7 5">
+<g id="prefectures">
+${paths.join('\n')}
+</g>
+</svg>`;
+}

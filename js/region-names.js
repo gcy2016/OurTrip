@@ -229,3 +229,127 @@ export function validMapData(data) {
   if (data.markers && !Array.isArray(data.markers)) return false;
   return true;
 }
+
+// ---------- 二级地图（按省） ----------
+
+export const L2_FORMAT = 'ourtrip-l2-map-v1';
+export const L2_INDEX_KEY = 'meta/l2/index.json';
+export const l2Key = (l1Id) => `meta/l2/${l1Id}.json`;
+
+/**
+ * 解析一个省的地级边界 SVG（每个地级一个 <path data-name d>），按名称对应到该省的二级区域编号。
+ * 自动判断是哪个省：取名称对应上最多的一级区域。不在 333 个二级区域里的块（如省直辖县级市）放进 others，显示为灰色、无名称。
+ */
+export function parseLevel2Svg(svgText, map) {
+  const text = String(svgText || '');
+  const paths = [];
+  const re = /<path\b[^>]*>/g;
+  let m;
+  while ((m = re.exec(text))) {
+    const d = cleanPath(attr(m[0], 'd'));
+    const name = attr(m[0], 'data-name');
+    if (d && name) paths.push({ name, d });
+  }
+  const problems = [];
+  let best = null;
+  let bestHits = 0;
+  for (const l1 of map.level1) {
+    if (!(l1.children || []).length) continue;
+    const bases = new Set(l1.children.map((c) => baseShortName(c.name)));
+    const hits = paths.filter((p) => bases.has(baseShortName(p.name))).length;
+    if (hits > bestHits) {
+      best = l1;
+      bestHits = hits;
+    }
+  }
+  if (!best) return { data: null, l1Id: null, problems: ['文件中没有能对应到二级区域的地级边界'] };
+  const regions = {};
+  const others = [];
+  for (const p of paths) {
+    const c = best.children.find((x) => x.name === p.name || baseShortName(x.name) === baseShortName(p.name));
+    if (c && !regions[c.id]) regions[c.id] = p.d;
+    else others.push(p.d);
+  }
+  for (const c of best.children) if (!regions[c.id]) problems.push(`${best.id} 的地图里找不到 ${c.id}（${c.name}）`);
+  const box = bboxOf([...Object.values(regions), ...others]);
+  const pad = Math.max(box.w, box.h) * 0.02;
+  return {
+    l1Id: best.id,
+    data: {
+      format: L2_FORMAT,
+      l1: best.id,
+      viewBox: [box.x - pad, box.y - pad, box.w + pad * 2, box.h + pad * 2].map((v) => Math.round(v * 1000) / 1000),
+      regions,
+      others,
+    },
+    problems,
+  };
+}
+
+export function validL2Data(data, l1Id) {
+  if (!data || data.format !== L2_FORMAT || data.l1 !== l1Id || !Array.isArray(data.viewBox) || data.viewBox.length !== 4) return false;
+  if (!data.regions || typeof data.regions !== 'object') return false;
+  for (const d of [...Object.values(data.regions), ...(data.others || [])]) if (!cleanPath(d)) return false;
+  return true;
+}
+
+/** 面积加权的形心（取面积最大的一块），用来放区域名称；落在凹形区域外时退回到包围盒中心 */
+export function labelPoint(d) {
+  const rings = (String(d).match(/M[^M]*/g) || []).map((r) => {
+    const nums = (r.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+    const pts = [];
+    for (let i = 0; i + 1 < nums.length; i += 2) pts.push([nums[i], nums[i + 1]]);
+    return pts;
+  });
+  let best = null;
+  let bestA = 0;
+  for (const pts of rings) {
+    let a = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x1, y1] = pts[i];
+      const [x2, y2] = pts[(i + 1) % pts.length];
+      const f = x1 * y2 - x2 * y1;
+      a += f;
+      cx += (x1 + x2) * f;
+      cy += (y1 + y2) * f;
+    }
+    if (Math.abs(a) > bestA) {
+      bestA = Math.abs(a);
+      best = { x: cx / (3 * a), y: cy / (3 * a), pts };
+    }
+  }
+  if (!best) {
+    const b = pathBBox(d);
+    return { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  }
+  // 形心不在多边形内（如月牙形）时，沿水平线取多边形内最宽一段的中点
+  const inside = (x, y, pts) => {
+    let c = false;
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  if (inside(best.x, best.y, best.pts)) return { x: best.x, y: best.y };
+  const xs = [];
+  const y = best.y;
+  for (let i = 0, j = best.pts.length - 1; i < best.pts.length; j = i++) {
+    const [xi, yi] = best.pts[i];
+    const [xj, yj] = best.pts[j];
+    if (yi > y !== yj > y) xs.push(((xj - xi) * (y - yi)) / (yj - yi) + xi);
+  }
+  xs.sort((a, b) => a - b);
+  let mid = null;
+  let w = 0;
+  for (let i = 0; i + 1 < xs.length; i += 2) {
+    if (xs[i + 1] - xs[i] > w) {
+      w = xs[i + 1] - xs[i];
+      mid = (xs[i] + xs[i + 1]) / 2;
+    }
+  }
+  return mid === null ? { x: best.x, y: best.y } : { x: mid, y };
+}
