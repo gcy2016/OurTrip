@@ -17,6 +17,7 @@ import * as B from './boxes.js';
 import { appleMapsUrl, formatCoords, copyText, hasCoords } from './maps.js';
 import { NAMES_KEY } from './region-names.js';
 import { mapView, timelineView, resetViews } from './views.js';
+import { treeView, treeModel, resetTree } from './tree-view.js';
 
 const DEMO_PASSWORD = 'demo1234';
 const POLL_EVERY = 20000;
@@ -411,6 +412,7 @@ async function logout() {
   app.store = null;
   app.names = {};
   resetViews();
+  resetTree();
   app.mode = 'login';
   renderNow();
 }
@@ -442,6 +444,7 @@ function parseRoute() {
   else if (location.hash === '#/map') app.route = { kind: 'map', id: null };
   else if (/^#\/map\/A\d{2}$/.test(location.hash)) app.route = { kind: 'map', id: location.hash.slice(6) };
   else if (location.hash === '#/timeline') app.route = { kind: 'timeline', id: null };
+  else if (location.hash === '#/tree') app.route = { kind: 'tree', id: null };
   else app.route = { kind: 'home', id: null };
 }
 
@@ -564,6 +567,7 @@ function mainView() {
   const { kind, id } = app.route;
   if (kind === 'map') page = mapView(app, id);
   else if (kind === 'timeline') page = timelineView(app);
+  else if (kind === 'tree') page = treeView(app);
   else if (kind === 'region' && app.regions.byId.has(id)) {
     page = isContentRegion(app.regions, id) ? containerView(id) : level1View(id);
   } else if (kind === 'box' && album.nodes[id]) {
@@ -648,6 +652,7 @@ async function menu() {
     await app.sync.load();
     await loadNames();
     resetViews();
+    resetTree();
     app.lock = await app.session.lockStatus();
     toast('已刷新');
   }
@@ -666,8 +671,9 @@ async function menu() {
 function breadcrumb() {
   const { kind, id } = app.route;
   if (kind === 'home') return null;
-  if (kind === 'map' || kind === 'timeline') {
-    return h('nav', { class: 'crumbs', 'aria-label': '位置' }, h('a', { href: '#/' }, '全部区域'), h('span', { class: 'sep' }, '/'), h('span', { class: 'current' }, kind === 'map' ? '地图' : '时间线'));
+  if (kind === 'map' || kind === 'timeline' || kind === 'tree') {
+    const title = { map: '地图', timeline: '时间线', tree: '旅行树' }[kind];
+    return h('nav', { class: 'crumbs', 'aria-label': '位置' }, h('a', { href: '#/' }, '全部区域'), h('span', { class: 'sep' }, '/'), h('span', { class: 'current' }, title));
   }
   const album = app.sync.album;
   const chain = [];
@@ -793,7 +799,7 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
   );
 }
 
-function regionTile(id, { href } = {}) {
+function regionTile(id, { href, onclick } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
   const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id]);
@@ -812,6 +818,7 @@ function regionTile(id, { href } = {}) {
     bg,
     region: r.level === 1 ? 'l1' : 'l2',
     lit: app.lit.has(id),
+    onclick,
   });
 }
 
@@ -826,7 +833,10 @@ function homeView() {
       'div',
       { class: 'entry-row' },
       h('a', { class: 'entry-btn', href: '#/map' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🗺️'), '地图'),
-      h('a', { class: 'entry-btn', href: '#/timeline' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🕒'), '时间线')
+      // 旅行树替代时间线入口（时间线页面代码保留）；没有可作为根基的已点亮一级区域时置灰、不可点
+      treeModel(app).root
+        ? h('a', { class: 'entry-btn', href: '#/tree' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
+        : h('span', { class: 'entry-btn disabled', 'aria-disabled': 'true' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
     ),
     h('div', { class: 'grid' }, app.regions.level1.map((id) => regionTile(id)))
   );

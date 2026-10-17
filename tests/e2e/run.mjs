@@ -129,6 +129,9 @@ try {
 
   await step('首页 34 个一级区域；有二级区域的进入二级列表，没有的直接进入内容', async () => {
     assert.equal(await A.locator('.grid .tile').count(), 34);
+    // 还没有点亮的区域：旅行树入口置灰、不可点；时间线入口已由旅行树替代
+    assert.equal(await A.locator('span.entry-btn.disabled:has-text("旅行树")').count(), 1);
+    assert.equal(await A.locator('.entry-btn:has-text("时间线")').count(), 0);
     await A.click('.tile-title:text-is("A03")');
     await A.waitForSelector('.page-head h1:text-is("A03")');
     assert.equal(await A.locator('.grid .tile').count(), 11);
@@ -814,8 +817,8 @@ try {
   });
 
   await step('时间线页：按点亮日期排列，距离与时间成比例，复用区域方框显示名称和日期', async () => {
-    await A.goto(`${BASE}#/`);
-    await A.click('.entry-btn:has-text("时间线")');
+    // 时间线入口已由旅行树替代，页面代码保留，仍可直接打开
+    await A.goto(`${BASE}#/timeline`);
     await A.waitForSelector('.tl-card');
     const expected = await A.evaluate(async () => {
       const m = await import('/js/album.js');
@@ -872,6 +875,76 @@ try {
     await A.goto(`${BASE}#/r/A07`);
     await A.waitForSelector('.tile-title:text-is("重名市")');
     await A.screenshot({ path: join(SHOTS, 'm-level1-names.png') });
+    await A.setViewportSize({ width: 1100, height: 850 });
+  });
+
+  await step('旅行树：根基为最早点亮的一级区域，一级区域由下向上、主枝左右交替，点框查看点亮时间并可进入', async () => {
+    await A.goto(`${BASE}#/`);
+    await A.click('a.entry-btn:has-text("旅行树")');
+    await A.waitForSelector('.tree-box');
+    const expect = await A.evaluate(async () => {
+      const m = await import('/js/tree.js');
+      const app = window.__app;
+      const model = m.buildTreeModel({ regions: app.regions, lit: app.lit, litDate: (id) => app.litDate(id), nameOf: (id) => app.regionName(id) });
+      const all = [model.root, ...model.levels];
+      const count = all.reduce((n, l) => n + (l.selfBox ? 1 : l.kids.length), 0);
+      return { order: all.map((l) => l.id), dates: all.map((l) => l.date), count };
+    });
+    assert.ok(expect.order.length >= 2, JSON.stringify(expect));
+    assert.deepEqual(expect.dates, [...expect.dates].sort());
+    const boxes = await A.$$eval('.tree-box', (els) => els.map((e) => ({ id: e.dataset.id, l1: e.dataset.l1, order: +e.dataset.order, top: e.getBoundingClientRect().top, left: e.getBoundingClientRect().left })));
+    assert.equal(boxes.length, expect.count);
+    // 每个框都挂在所属一级区域的主枝上；框内不显示名称和日期，名称写在框外
+    for (const b of boxes) assert.ok(b.id === b.l1 || b.id.startsWith(`${b.l1}-`), JSON.stringify(b));
+    assert.equal(await A.locator('.tree-box .tile-title:visible').count(), 0);
+    assert.equal(await A.locator('.tree-name').count(), boxes.length);
+    // 一级区域由下向上：主枝越晚越靠上
+    const branches = await A.$$eval('.tree-branches .tree-l1', (els) => els.map((e) => ({ id: e.dataset.id, ...(({ top, left, right }) => ({ top, left, right }))(e.getBoundingClientRect()) })));
+    const trunkX = await A.evaluate(() => {
+      const b = document.querySelector('.tree-trunks .tree-trunk').getBoundingClientRect();
+      return b.left + b.width / 2;
+    });
+    const tops = branches.map((b) => b.top);
+    assert.deepEqual(tops, [...tops].sort((a, b) => b - a));
+    const onLeft = branches.map((b) => b.right <= trunkX + 1);
+    for (let i = 1; i < onLeft.length; i++) assert.notEqual(onLeft[i], onLeft[i - 1], '主枝左右交替');
+    // 点主枝：显示一级区域完整名称与点亮时间，再点关闭
+    const l1 = branches[branches.length - 1].id;
+    await A.click(`.tree-branches .tree-l1[data-id="${l1}"] .tree-branch`, { force: true });
+    await A.waitForSelector('.tree-info');
+    const l1Text = await A.evaluate((id) => `${window.__app.regionName(id)}　${window.__app.litDate(id).replace(/-/g, '.')} 点亮`, l1);
+    assert.equal(await A.textContent('.tree-info p'), l1Text);
+    await A.click('.tree-info button');
+    await A.waitForSelector('.tree-info', { state: 'detached' });
+    // 点名称（框外）不触发；点框：显示点亮时间，取消留在旅行树，进入则打开该区域
+    await A.click('.tree-name >> nth=0', { force: true });
+    assert.equal(await A.locator('.dialog').count(), 0);
+    const first = boxes[0].id;
+    await A.click(`.tree-box[data-id="${first}"] .tile`);
+    await A.waitForSelector('.dialog');
+    const date = await A.evaluate((id) => window.__app.litDate(id).replace(/-/g, '.'), first);
+    assert.match(await A.textContent('.dialog'), new RegExp(`点亮时间：${date.replace(/\./g, '\\.')}`));
+    await A.click('.dialog button:text-is("取消")');
+    assert.equal(await A.evaluate(() => location.hash), '#/tree');
+    await A.click(`.tree-box[data-id="${first}"] .tile`);
+    await A.click('.dialog button:text-is("进入该区域")');
+    await A.waitForFunction((id) => location.hash === `#/r/${id}`, first);
+    await A.goto(`${BASE}#/tree`);
+    await A.waitForSelector('.tree-box');
+    await A.screenshot({ path: join(SHOTS, 'tree.png'), fullPage: true });
+    // 手机：只有树区域可以横向滚动，整页不横向晃动；打开时树干在视野中央
+    await A.setViewportSize({ width: 375, height: 812 });
+    await A.goto(`${BASE}#/`);
+    await A.goto(`${BASE}#/tree`);
+    await A.waitForSelector('.tree-box');
+    await A.waitForTimeout(100);
+    const m = await A.evaluate(() => {
+      const t = document.querySelector('.tree-trunks .tree-trunk').getBoundingClientRect();
+      return { page: document.documentElement.scrollWidth > window.innerWidth, trunk: t.left + t.width / 2, w: window.innerWidth };
+    });
+    assert.equal(m.page, false);
+    assert.ok(Math.abs(m.trunk - m.w / 2) < 30, JSON.stringify(m));
+    await A.screenshot({ path: join(SHOTS, 'm-tree.png') });
     await A.setViewportSize({ width: 1100, height: 850 });
   });
 

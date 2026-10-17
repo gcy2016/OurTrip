@@ -1624,3 +1624,182 @@ textarea.input {
 .tl-card .tile {
   box-shadow: var(--shadow-card);
 }
+
+/* =========================================================================
+   旅行树：树干、枝条颜色在这里调整；区域框复用首页方框（等比缩小，隐藏框内名称与日期）
+   ========================================================================= */
+
+.tree-page {
+  --tree-bark: #8a6a4c;
+  --tree-bark-alt: #957556;
+  --tree-seam: rgba(255, 244, 230, 0.55);
+  --tree-branch: #8f6f50;
+  --tree-twig: #a4876a;
+  --tree-ground: #cfe8c6;
+  --tree-sel: #c9783a;
+}
+
+.entry-btn.disabled {
+  border-color: var(--line);
+  color: var(--text-secondary);
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.tree-hint {
+  margin: -4px 0 6px;
+  font-size: 13px;
+}
+
+/* 只有树区域横向滚动；整页不横向晃动，树区域内不触发缩放 */
+.tree-scroll {
+  margin: 0 -20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 520px) {
+  .tree-scroll {
+    margin: 0 -16px;
+  }
+}
+
+.tree-canvas {
+  position: relative;
+}
+
+.tree-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  overflow: visible;
+}
+
+.tree-ground {
+  fill: var(--tree-ground);
+}
+
+.tree-trunk {
+  fill: var(--tree-bark);
+}
+
+.tree-trunk.shade-1 {
+  fill: var(--tree-bark-alt);
+}
+
+.tree-seam {
+  stroke: var(--tree-seam);
+  stroke-width: 1;
+}
+
+.tree-branch {
+  fill: var(--tree-branch);
+}
+
+.tree-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  stroke-linejoin: round;
+}
+
+.tree-twig {
+  fill: none;
+  stroke: var(--tree-twig);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.tree-rootline {
+  fill: none;
+  stroke: var(--tree-bark);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.tree-knot {
+  fill: #6f5139;
+  cursor: pointer;
+}
+
+.tree-l1 {
+  cursor: pointer;
+  outline: none;
+}
+
+.tree-l1.sel .tree-trunk,
+.tree-l1.sel .tree-branch,
+.tree-knot.sel {
+  fill: var(--tree-sel);
+}
+
+.tree-l1.sel .tree-rootline {
+  stroke: var(--tree-sel);
+}
+
+.tree-box {
+  position: absolute;
+}
+
+.tree-box .tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 9px;
+  box-shadow: 0 3px 10px rgba(47, 124, 246, 0.12), 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.tree-box .tile.lit {
+  box-shadow: 0 0 0 1.5px var(--lit), 0 3px 10px rgba(47, 124, 246, 0.12);
+}
+
+.tree-box .tile-text,
+.tree-box .lit-mark,
+.tree-box .tile.has-photo::after {
+  display: none;
+}
+
+.tree-name {
+  position: absolute;
+  transform: translateX(-50%);
+  max-width: 84px;
+  overflow: hidden;
+  font-family: 'MaShanZheng', 'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', serif;
+  font-size: 14px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.tree-name.up {
+  transform: translate(-50%, -100%);
+}
+
+.tree-info {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 16px;
+  transform: translateX(-50%);
+  border-radius: var(--r-card);
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-pop);
+}
+
+.tree-info p {
+  margin: 0;
+  white-space: nowrap;
+}
