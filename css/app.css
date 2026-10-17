@@ -60,17 +60,18 @@
 
   /* 旅行树外观（由 Muse 调整）：只改这里就能换树的颜色、粗细、字体；树的形状尺寸见 js/tree.js 顶部的 TREE_DIMS */
   --tree-bg: transparent; /* 树区域背景 */
-  --tree-bark: #8a6a4c; /* 树干（深浅交替的两种颜色） */
-  --tree-bark-alt: #957556;
-  --tree-seam: rgba(255, 244, 230, 0.55); /* 相邻两段树干的接缝线 */
+  --tree-bark: #6e8fb4; /* 树干（深浅交替的两种颜色，淡蓝灰系，与冷色主题统一） */
+  --tree-bark-alt: #7fa2c6;
+  --tree-seam: rgba(226, 238, 252, 0.6); /* 相邻两段树干的接缝线 */
   --tree-seam-width: 1px;
-  --tree-branch: #8f6f50; /* 主枝 */
-  --tree-twig: #a4876a; /* 小枝 */
+  --tree-branch: #7a9cbd; /* 主枝 */
+  --tree-twig: #96b4d2; /* 小枝 */
   --tree-twig-width: 2px;
-  --tree-root: #8a6a4c; /* 树根 */
+  --tree-leaf: #a9c6e2; /* 主枝上的小叶 */
+  --tree-root: #8a6a4c; /* 树根（重庆根基部分，保持不动） */
   --tree-root-width: 5px;
-  --tree-ground: #cfe8c6; /* 地面 */
-  --tree-knot: #6f5139; /* 主枝与树干相接的节点 */
+  --tree-ground: #cfe8c6; /* 地面（重庆根基部分，保持不动） */
+  --tree-knot: #56779b; /* 主枝与树干相接的节点 */
   --tree-sel: #c9783a; /* 点开一级区域时高亮的颜色 */
   --tree-box-radius: 9px; /* 区域框圆角 */
   --tree-box-border: var(--lit); /* 区域框描边 */
@@ -1726,6 +1727,11 @@ textarea.input {
   stroke: var(--tree-twig);
   stroke-width: var(--tree-twig-width);
   stroke-linecap: round;
+}
+
+.tree-leaf {
+  fill: var(--tree-leaf);
+  opacity: 0.92;
 }
 
 .tree-rootline {
