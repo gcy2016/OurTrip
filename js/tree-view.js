@@ -71,7 +71,10 @@ function rootPaths(t, Y) {
 
 export function treeView(app) {
   const model = treeModel(app);
-  const head = h('div', { class: 'page-head' }, h('h1', null, '旅行树'), h('p', { class: 'sub' }, model.root ? `${1 + model.levels.length} 个一级区域` : ''));
+  // 与首页、一级区域页相同的格式：已点亮 x/333 个二级区域
+  const level2 = [...app.regions.byId.values()].filter((r) => r.level === 2);
+  const litL2 = level2.filter((r) => app.lit.has(r.id)).length;
+  const head = h('div', { class: 'page-head' }, h('h1', null, '旅行树'), h('p', { class: 'sub' }, `已点亮 ${litL2}/${level2.length} 个二级区域`));
   if (!model.root) return h('section', null, head, h('div', { class: 'empty' }, '还没有点亮的区域。'));
 
   const t = layoutTree(model);

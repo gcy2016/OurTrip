@@ -892,6 +892,12 @@ try {
     });
     assert.ok(expect.order.length >= 2, JSON.stringify(expect));
     assert.deepEqual(expect.dates, [...expect.dates].sort());
+    const sub = await A.evaluate(() => {
+      const app = window.__app;
+      const l2 = [...app.regions.byId.values()].filter((r) => r.level === 2);
+      return `已点亮 ${l2.filter((r) => app.lit.has(r.id)).length}/333 个二级区域`;
+    });
+    assert.equal(await A.textContent('.page-head .sub'), sub);
     const boxes = await A.$$eval('.tree-box', (els) => els.map((e) => ({ id: e.dataset.id, l1: e.dataset.l1, order: +e.dataset.order, top: e.getBoundingClientRect().top, left: e.getBoundingClientRect().left })));
     assert.equal(boxes.length, expect.count);
     // 每个框都挂在所属一级区域的主枝上；框内不显示名称和日期，名称写在框外

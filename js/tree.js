@@ -58,6 +58,8 @@ export function buildTreeModel({ regions, lit, litDate, nameOf }) {
 
 // ---------- 布局 ----------
 
+// 树的形状尺寸（由 Muse 调整）：改完运行 npm test，测试会检查全部点亮时框和名称不重叠、顺序不变。
+// 颜色、粗细、字体在 css/app.css 顶部的 --tree-* 变量里。
 export const TREE_DIMS = {
   box: 64, // 区域框边长（主页方框等比缩小）
   label: 18, // 二级区域名称行高
