@@ -1532,7 +1532,7 @@ textarea.input {
 }
 
 /* =========================================================================
-   时间线：竖向轴，距离与真实时间成比例（约每月 60px）
+   时间线：竖向轴，距离与真实时间成比例（约每月 120px）
    ========================================================================= */
 
 .timeline {
@@ -1545,18 +1545,18 @@ textarea.input {
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 2px;
-  margin-left: -1px;
+  width: 6px;
+  margin-left: -3px;
   background: linear-gradient(var(--lit-from), var(--primary-border));
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .tl-tick {
   position: absolute;
   left: 50%;
-  width: 8px;
-  height: 1px;
-  margin-left: -4px;
+  width: 14px;
+  height: 2px;
+  margin-left: -7px;
   background: var(--line);
 }
 
@@ -1565,24 +1565,26 @@ textarea.input {
   top: 0;
   left: 50%;
   transform: translate(-50%, -50%);
-  padding: 0 3px;
-  border-radius: 6px;
+  padding: 1px 6px;
+  border-radius: 9px;
   background: var(--bg);
-  font-size: 10px;
-  line-height: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 18px;
   color: var(--text-secondary);
   white-space: nowrap;
 }
 
 .tl-tick.year {
-  width: 14px;
-  margin-left: -7px;
-  height: 2px;
+  width: 20px;
+  margin-left: -10px;
+  height: 3px;
   background: var(--primary-border);
 }
 
 .tl-tick.year span {
-  font-weight: 650;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--primary-strong);
 }
 
@@ -1590,9 +1592,9 @@ textarea.input {
   position: absolute;
   left: 50%;
   z-index: 1;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
   border: 2px solid #fff;
   border-radius: 50%;
   background: var(--primary);
@@ -1621,4 +1623,19 @@ textarea.input {
 
 .tl-card .tile {
   box-shadow: var(--shadow-card);
+}
+
+/* 方框缩小到约 2/3，文字边距和日期字号相应收紧 */
+.tl-card .tile-text {
+  left: 8px;
+  right: 8px;
+  bottom: 7px;
+}
+
+.tl-card .tile.region .tile-title {
+  font-size: min(var(--name-max), calc((100cqw - 16px) / (var(--name-w, 2) * var(--name-fit))));
+}
+
+.tl-card .tile-sub {
+  font-size: 10px;
 }

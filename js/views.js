@@ -344,7 +344,7 @@ export function resetViews() {
 
 // ---------- 时间线 ----------
 
-export const PX_PER_MONTH = 60;
+export const PX_PER_MONTH = 120;
 const DAY_MS = 86400000;
 const PX_PER_DAY = PX_PER_MONTH / 30.44;
 
@@ -383,7 +383,8 @@ export function timelineView(app) {
   if (!items.length) return h('section', null, head, h('div', { class: 'empty' }, '还没有点亮的区域。'));
 
   const width = Math.min(document.documentElement.clientWidth || 360, 1200) - 40;
-  const cardW = Math.max(96, Math.min(150, Math.floor(width / 2 - 34)));
+  // 方框为首页大小的约 2/3，让不同时间的方框之间留出距离
+  const cardW = Math.max(64, Math.min(100, Math.floor(((width / 2 - 34) * 2) / 3)));
   const { items: laid, height, startDay } = layoutTimeline(items, { cardH: cardW });
   const box = h('div', { class: 'timeline', style: { height: `${Math.ceil(height)}px`, '--tl-card': `${cardW}px` } });
   box.appendChild(h('div', { class: 'tl-axis' }));
