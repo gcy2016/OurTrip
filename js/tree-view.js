@@ -141,6 +141,24 @@ export function treeView(app) {
   }
   root.appendChild(twigG);
 
+  // 叶子：在每条主枝上点缀两片小叶（纯装饰，不参与布局计算）
+  const leafG = svg('g', { class: 'tree-leaves' });
+  for (const b of t.branches) {
+    const pts = b.points;
+    if (pts.length < 4) continue;
+    [[0.33, -1], [0.66, 1]].forEach(([frac, s]) => {
+      const i = Math.max(1, Math.min(pts.length - 2, Math.round(pts.length * frac)));
+      const p = pts[i];
+      const cxp = f(p.x), cyp = f(Y(p.y) + s * 7);
+      const tilt = b.side > 0 ? s * 24 : -s * 24;
+      leafG.appendChild(svg('ellipse', {
+        class: 'tree-leaf', cx: cxp, cy: cyp, rx: 7, ry: 3.1,
+        transform: `rotate(${f(tilt)} ${cxp} ${cyp})`,
+      }));
+    });
+  }
+  root.appendChild(leafG);
+
   // 树干：每个一级区域一段，深浅交替，接缝处一条淡线
   const trunkG = svg('g', { class: 'tree-trunks' });
   for (const s of t.segments) {
