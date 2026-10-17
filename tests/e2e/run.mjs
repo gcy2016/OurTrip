@@ -831,10 +831,10 @@ try {
     const dates = cards.map((c) => c.date);
     assert.deepEqual(dates, [...dates].sort().reverse());
     const dots = await A.$$eval('.tl-dot', (els) => els.map((e) => parseFloat(e.style.top)));
-    // 相邻两个日期之间约每月 120px
+    // 相邻两个日期之间约每月 180px
     const n = dates.length;
     const months = await A.evaluate((d) => (Date.parse(d[0]) - Date.parse(d[1])) / (30.44 * 86400000), [dates[n - 2], dates[n - 1]]);
-    assert.ok(Math.abs(dots[n - 1] - dots[n - 2] - months * 120) < 3, `${dots[n - 1] - dots[n - 2]} vs ${months * 120}`);
+    assert.ok(Math.abs(dots[n - 1] - dots[n - 2] - months * 180) < 3, `${dots[n - 1] - dots[n - 2]} vs ${months * 180}`);
     assert.ok(cards[0].top < 60); // 打开页面直接看到最新的
     assert.match(await A.textContent('.tl-card[data-id="A03-C01"] .tile-date'), /2023\.05\.01 点亮/);
     await A.screenshot({ path: join(SHOTS, 'timeline.png'), fullPage: true });

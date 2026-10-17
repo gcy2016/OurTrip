@@ -1532,7 +1532,7 @@ textarea.input {
 }
 
 /* =========================================================================
-   时间线：竖向轴，距离与真实时间成比例（约每月 120px）
+   时间线：竖向轴，距离与真实时间成比例（约每月 180px）
    ========================================================================= */
 
 .timeline {
@@ -1623,19 +1623,4 @@ textarea.input {
 
 .tl-card .tile {
   box-shadow: var(--shadow-card);
-}
-
-/* 方框缩小到约 2/3，文字边距和日期字号相应收紧 */
-.tl-card .tile-text {
-  left: 8px;
-  right: 8px;
-  bottom: 7px;
-}
-
-.tl-card .tile.region .tile-title {
-  font-size: min(var(--name-max), calc((100cqw - 16px) / (var(--name-w, 2) * var(--name-fit))));
-}
-
-.tl-card .tile-sub {
-  font-size: 10px;
 }
