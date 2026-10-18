@@ -230,7 +230,7 @@ export function treeView(app) {
     );
     const ly = Y(b.label.y);
     canvas.appendChild(
-      h('div', { class: `tree-name ${b.label.anchor === 'bottom' ? 'up' : 'down'}`, style: { left: `${f(cx + b.label.x)}px`, top: `${f(ly)}px` }, dataset: { id: b.id } }, name)
+      h('div', { class: `tree-name ${b.label.anchor === 'bottom' ? 'up' : 'down'}`, style: { left: `${f(cx + b.label.x)}px`, top: `${f(ly)}px` }, dataset: { id: b.id } }, h('div', null, name), h('div', { class: 'tree-date' }, dotted(b.date)))
     );
   }
 

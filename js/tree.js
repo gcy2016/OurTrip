@@ -62,7 +62,7 @@ export function buildTreeModel({ regions, lit, litDate, nameOf }) {
 // 颜色、粗细、字体在 css/app.css 顶部的 --tree-* 变量里。
 export const TREE_DIMS = {
   box: 64, // 区域框边长（主页方框等比缩小）
-  label: 18, // 二级区域名称行高
+  label: 32, // 框外文字的高度：名称一行（18）+ 日期一行（14）
   labelGap: 3, // 名称与框的间距
   twig: [14, 24], // 小枝长度（主枝到框边缘）
   step: 46, // 相邻两个框沿主枝的间距（上下交替，同侧相隔两个间距）
