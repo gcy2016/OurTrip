@@ -2,7 +2,7 @@
 // 排序与几何全部在 js/tree.js 中算好，这里只负责画（SVG 画树干与枝条，区域框复用首页方框）。
 
 import { h, confirmDialog } from './ui.js';
-import { buildTreeModel, layoutTree } from './tree.js';
+import { buildTreeModel, layoutTree, hash01 } from './tree.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -39,6 +39,44 @@ function segmentPath(s, Y) {
     s.tip ? `Q0 ${f(Y(s.y1 + s.w1 * 2))} ${f(s.w1)} ${f(Y(s.y1))}` : `L${f(s.w1)} ${f(Y(s.y1))}`,
     `Q${f(wm + s.bulgeR)} ${f(Y(ym))} ${f(s.w0)} ${f(Y(s.y0))}Z`,
   ].join('');
+}
+
+// 树皮纹理：每段树干几条竖向纹路，按圆柱面上固定的几个角度排布（越靠两侧越密，看起来是圆的）。
+// 纹路在上下两端的位置只取决于该处的树干宽度，而相接的两段在接口处宽度相同，
+// 所以树干段换了位置、和别的段相接，纹路也能对上
+const BARK_COLS = [-64, -40, -16, 10, 34, 58].map((a) => Math.sin((a * Math.PI) / 180) * 0.88);
+
+function barkPaths(s, Y) {
+  const out = [];
+  const h = s.y1 - s.y0;
+  BARK_COLS.forEach((c, i) => {
+    const amp = (hash01(`${s.id}#bark${i}`) - 0.5) * s.w0 * 0.3 * (1 - Math.abs(c) * 0.6);
+    const amp2 = (hash01(`${s.id}#bark2${i}`) - 0.5) * s.w0 * 0.3 * (1 - Math.abs(c) * 0.6);
+    const xa = c * s.w0;
+    const xb = c * s.w1;
+    const at = (t) => c * (s.w0 + (s.w1 - s.w0) * t);
+    out.push({
+      cls: 'tree-bark',
+      d: `M${f(xa)} ${f(Y(s.y0))}C${f(at(0.33) + amp)} ${f(Y(s.y0 + h * 0.33))} ${f(at(0.66) + amp2)} ${f(Y(s.y0 + h * 0.66))} ${f(xb)} ${f(Y(s.y1))}`,
+    });
+  });
+  // 段中间几道短裂纹，不碰到上下两端
+  for (let i = 0; i < 3; i++) {
+    const r = hash01(`${s.id}#crack${i}`);
+    const c = (hash01(`${s.id}#crackx${i}`) - 0.5) * 1.2;
+    const y = s.y0 + h * (0.2 + 0.6 * r);
+    const w = s.w0 + (s.w1 - s.w0) * ((y - s.y0) / h);
+    const len = Math.min(h * 0.18, 16 + r * 10);
+    out.push({ cls: 'tree-crack', d: `M${f(c * w)} ${f(Y(y))}q${f(w * 0.12)} ${f(-len / 2)} ${f(w * 0.04)} ${f(-len)}` });
+  }
+  // 部分树干段上有一个树疤
+  if (hash01(`${s.id}#knot`) < 0.45 && h > 60) {
+    const y = s.y0 + h * (0.3 + 0.4 * hash01(`${s.id}#knoty`));
+    const w = s.w0 + (s.w1 - s.w0) * ((y - s.y0) / h);
+    const x = (hash01(`${s.id}#knotx`) - 0.5) * w * 0.9;
+    out.push({ cls: 'tree-scar', ellipse: { cx: f(x), cy: f(Y(y)), rx: f(Math.max(2, w * 0.18)), ry: f(Math.max(3, w * 0.3)) } });
+  }
+  return out;
 }
 
 /** 主枝：沿中心线两侧偏移出轮廓，末端收尖 */
@@ -112,20 +150,30 @@ export function treeView(app) {
 
   const root = svg('svg', { class: 'tree-svg', width, height, viewBox: `${f(-cx)} 0 ${width} ${height}`, 'aria-hidden': 'false' });
   // 科技感：树干、树枝用半透明渐变（两侧亮、中间透），外面一圈淡淡的光晕，颜色见 css/app.css 的 --tree-* 变量
+  // 立体感：像一根被左上方的光照着的圆柱，左侧偏亮、右侧暗
   const grad = (id, x2, y2) =>
     svg(
       'linearGradient',
       { id, x1: 0, y1: 0, x2, y2 },
       svg('stop', { offset: '0', class: 'tree-stop-edge' }),
-      svg('stop', { offset: '0.5', class: 'tree-stop-mid' }),
-      svg('stop', { offset: '1', class: 'tree-stop-edge' })
+      svg('stop', { offset: '0.3', class: 'tree-stop-hi' }),
+      svg('stop', { offset: '0.58', class: 'tree-stop-mid' }),
+      svg('stop', { offset: '1', class: 'tree-stop-shade' })
     );
-  root.appendChild(svg('defs', null, grad('tree-grad-h', 1, 0), grad('tree-grad-v', 0, 1)));
+  const knotGrad = svg(
+    'radialGradient',
+    { id: 'tree-knot-grad', cx: 0.35, cy: 0.35, r: 0.7 },
+    svg('stop', { offset: '0', class: 'tree-knot-hi' }),
+    svg('stop', { offset: '1', class: 'tree-knot-lo' })
+  );
+  root.appendChild(svg('defs', null, grad('tree-grad-h', 1, 0), grad('tree-grad-v', 0, 1), knotGrad));
   // 地面：一圈发光的光环
   const groundG = svg('g', { class: 'tree-ground' });
   groundG.appendChild(svg('ellipse', { class: 'tree-ground-fill', cx: 0, cy: Y(-4), rx: 130, ry: 16 }));
   groundG.appendChild(svg('ellipse', { class: 'tree-ring', cx: 0, cy: Y(-4), rx: 130, ry: 16 }));
   groundG.appendChild(svg('ellipse', { class: 'tree-ring inner', cx: 0, cy: Y(-4), rx: 84, ry: 9 }));
+  // 树干在地面上的影子
+  groundG.appendChild(svg('ellipse', { class: 'tree-shadow', cx: 10, cy: Y(-3), rx: 46, ry: 7 }));
   root.appendChild(groundG);
 
   // 根基：树根伸进土里；有二级区域时是一小段底座
@@ -151,6 +199,10 @@ export function treeView(app) {
     g.appendChild(svg('path', { class: 'tree-hit', d })); // 加宽的透明描边，便于手指点中
     g.appendChild(svg('path', { class: 'tree-halo', d }));
     g.appendChild(svg('path', { class: 'tree-branch', d }));
+    // 立体感：主枝上沿一条高光、下沿一条暗影
+    const edge = (k) => `M${b.points.map((p) => `${f(p.x)} ${f(Y(p.y + p.w * k))}`).join('L')}`;
+    g.appendChild(svg('path', { class: 'tree-branch-hi', d: edge(0.2) }));
+    g.appendChild(svg('path', { class: 'tree-branch-shade', d: edge(-0.3) }));
     bindPick(g, b.id);
     branchG.appendChild(g);
   }
@@ -188,7 +240,9 @@ export function treeView(app) {
     const d = segmentPath(s, Y);
     g.appendChild(svg('path', { class: 'tree-halo', d }));
     g.appendChild(svg('path', { class: `tree-trunk shade-${s.shade}`, d }));
-    if (s.k > 0) g.appendChild(svg('line', { class: 'tree-seam', x1: f(-s.w0 + 1.5), x2: f(s.w0 - 1.5), y1: f(Y(s.y0)), y2: f(Y(s.y0)) }));
+    for (const t of barkPaths(s, Y)) g.appendChild(t.ellipse ? svg('ellipse', { class: t.cls, ...t.ellipse }) : svg('path', { class: t.cls, d: t.d }));
+    // 接缝画成圆柱上的一圈（椭圆的前半边），看起来是圆的
+    if (s.k > 0) g.appendChild(svg('path', { class: 'tree-seam', d: `M${f(-s.w0)} ${f(Y(s.y0))}A${f(s.w0)} ${f(s.w0 * 0.28)} 0 0 0 ${f(s.w0)} ${f(Y(s.y0))}` }));
     bindPick(g, s.id);
     trunkG.appendChild(g);
   }

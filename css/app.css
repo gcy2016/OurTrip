@@ -68,7 +68,15 @@
   --tree-outline-width: 1px;
   --tree-glow: rgba(56, 189, 248, 0.22); /* 外圈光晕 */
   --tree-glow-width: 7px;
-  --tree-core: rgba(255, 255, 255, 0.85); /* 树干中间的细亮线 */
+  --tree-core: rgba(255, 255, 255, 0); /* 树干中间的细亮线（现在用高光表现立体感，默认不显示） */
+  --tree-hi: #ffffff; /* 树干、树枝受光一侧的高光 */
+  --tree-hi-opacity: 0.6;
+  --tree-shade: #1d4ed8; /* 树干、树枝背光一侧 */
+  --tree-shade-opacity: 0.7;
+  --tree-bark-line: rgba(30, 64, 175, 0.35); /* 树皮纹路 */
+  --tree-bark-crack: rgba(255, 255, 255, 0.55); /* 树皮上的短裂纹 */
+  --tree-scar: rgba(30, 64, 175, 0.28); /* 树疤 */
+  --tree-ground-shadow: rgba(30, 58, 138, 0.18); /* 树干在地面上的影子 */
   --tree-seam: rgba(255, 255, 255, 0.75); /* 相邻两段树干的接缝线 */
   --tree-seam-width: 1px;
   --tree-twig: rgba(56, 189, 248, 0.75); /* 小枝 */
@@ -85,6 +93,8 @@
   --tree-box-radius: 10px; /* 区域框圆角 */
   --tree-box-border: rgba(56, 189, 248, 0.85); /* 区域框描边 */
   --tree-box-glow: rgba(56, 189, 248, 0.35); /* 区域框外发光 */
+  /* 区域框立体感：细亮边 + 右下方的厚度 + 落在下方的投影 + 外发光 */
+  --tree-box-shadow: 0 0 0 1px var(--tree-box-border), 2px 3px 0 rgba(37, 99, 235, 0.35), 4px 9px 14px rgba(15, 40, 90, 0.22), 0 0 12px var(--tree-box-glow);
   --tree-name-size: 12px; /* 二级区域名称 */
   --tree-name-color: #1e3a5f;
   --tree-name-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -1709,6 +1719,64 @@ textarea.input {
   stop-opacity: var(--tree-edge-opacity);
 }
 
+.tree-stop-hi {
+  stop-color: var(--tree-hi);
+  stop-opacity: var(--tree-hi-opacity);
+}
+
+.tree-stop-shade {
+  stop-color: var(--tree-shade);
+  stop-opacity: var(--tree-shade-opacity);
+}
+
+.tree-knot-hi {
+  stop-color: #ffffff;
+}
+
+.tree-knot-lo {
+  stop-color: var(--tree-sel);
+}
+
+.tree-shadow {
+  fill: var(--tree-ground-shadow);
+}
+
+.tree-bark {
+  fill: none;
+  stroke: var(--tree-bark-line);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.tree-crack {
+  fill: none;
+  stroke: var(--tree-bark-crack);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.tree-scar {
+  fill: none;
+  stroke: var(--tree-scar);
+  stroke-width: 1.2;
+}
+
+.tree-branch-hi {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.tree-branch-shade {
+  fill: none;
+  stroke: var(--tree-bark-line);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
 .tree-stop-mid {
   stop-color: var(--tree-mid);
   stop-opacity: var(--tree-mid-opacity);
@@ -1756,6 +1824,7 @@ textarea.input {
 }
 
 .tree-seam {
+  fill: none;
   stroke: var(--tree-seam);
   stroke-width: var(--tree-seam-width);
 }
@@ -1797,7 +1866,7 @@ textarea.input {
 }
 
 .tree-knot {
-  fill: var(--tree-knot);
+  fill: url(#tree-knot-grad);
   stroke: var(--tree-sel);
   stroke-width: 1.2;
   cursor: pointer;
@@ -1842,11 +1911,22 @@ textarea.input {
   height: 100%;
   border-radius: var(--tree-box-radius);
   border-color: transparent;
-  box-shadow: 0 0 0 1px var(--tree-box-border), 0 0 12px var(--tree-box-glow);
+  box-shadow: var(--tree-box-shadow);
 }
 
 .tree-box .tile.lit {
-  box-shadow: 0 0 0 1px var(--tree-box-border), 0 0 12px var(--tree-box-glow);
+  box-shadow: var(--tree-box-shadow);
+}
+
+/* 框的上沿一道高光，像卡片的倒角 */
+.tree-box .tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 38%);
+  pointer-events: none;
 }
 
 .tree-box .tile-text,
