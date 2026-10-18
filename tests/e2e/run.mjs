@@ -956,6 +956,17 @@ try {
     });
     assert.equal(m.page, false);
     assert.ok(Math.abs(m.trunk - m.w / 2) < 30, JSON.stringify(m));
+    // 点树干显示名称时页面不跳回顶部（把窗口调矮，让页面可以纵向滚动）
+    await A.setViewportSize({ width: 375, height: 360 });
+    const jump = await A.evaluate(async () => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      const before = window.scrollY;
+      document.querySelector('.tree-trunks .tree-l1').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 300));
+      return { before, after: window.scrollY, info: !!document.querySelector('.tree-info') };
+    });
+    assert.ok(jump.before > 0 && jump.info, JSON.stringify(jump));
+    assert.equal(jump.after, jump.before);
     await A.screenshot({ path: join(SHOTS, 'm-tree.png') });
     await A.setViewportSize({ width: 1100, height: 850 });
   });

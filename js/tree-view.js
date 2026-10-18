@@ -89,7 +89,8 @@ export function treeView(app) {
 
   // 画布：左右留白，内容比屏幕窄时树干放在正中
   const pad = 24;
-  const viewW = Math.min(document.documentElement.clientWidth || 360, 4000);
+  // 用 innerWidth：渲染时页面内容已清空，读 clientWidth 会触发排版，页面高度变 0，滚动位置被重置到顶部
+  const viewW = Math.min(window.innerWidth || 360, 4000);
   const half = Math.max(-t.bounds.minX, t.bounds.maxX) + pad;
   let width;
   let cx;

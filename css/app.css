@@ -1790,6 +1790,7 @@ textarea.input {
 }
 
 .tree-core {
+  pointer-events: none;
   stroke: var(--tree-core);
   stroke-width: 1;
   stroke-linecap: round;

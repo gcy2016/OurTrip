@@ -90,7 +90,7 @@ const rnd = (id, salt, [a, b]) => lerp(a, b, hash01(`${id}#${salt}`));
 
 /** 树干半宽：上下一样粗（不越往上越细），只在树梢收成圆头（见 layoutTree 的 tip） */
 export function trunkHalf() {
-  return 22;
+  return 15;
 }
 
 /** 主枝中心线在离树干中心 u 处的高度（相对节点） */
