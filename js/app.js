@@ -445,6 +445,7 @@ function parseRoute() {
   else if (/^#\/map\/A\d{2}$/.test(location.hash)) app.route = { kind: 'map', id: location.hash.slice(6) };
   else if (location.hash === '#/timeline') app.route = { kind: 'timeline', id: null };
   else if (location.hash === '#/tree') app.route = { kind: 'tree', id: null };
+  else if (location.hash === '#/tree-all') app.route = { kind: 'tree', id: 'all' }; // 临时预览：模拟全部点亮
   else app.route = { kind: 'home', id: null };
 }
 
@@ -567,7 +568,7 @@ function mainView() {
   const { kind, id } = app.route;
   if (kind === 'map') page = mapView(app, id);
   else if (kind === 'timeline') page = timelineView(app);
-  else if (kind === 'tree') page = treeView(app);
+  else if (kind === 'tree') page = treeView(app, { simulate: id === 'all' });
   else if (kind === 'region' && app.regions.byId.has(id)) {
     page = isContentRegion(app.regions, id) ? containerView(id) : level1View(id);
   } else if (kind === 'box' && album.nodes[id]) {
@@ -799,7 +800,7 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
   );
 }
 
-function regionTile(id, { href, onclick } = {}) {
+function regionTile(id, { href, onclick, lit } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
   const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id]);
@@ -817,7 +818,7 @@ function regionTile(id, { href, onclick } = {}) {
     color: COLORS.region,
     bg,
     region: r.level === 1 ? 'l1' : 'l2',
-    lit: app.lit.has(id),
+    lit: lit ?? app.lit.has(id),
     onclick,
   });
 }

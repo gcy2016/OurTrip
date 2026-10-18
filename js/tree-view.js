@@ -2,7 +2,7 @@
 // 排序与几何全部在 js/tree.js 中算好，这里只负责画（SVG 画树干与枝条，区域框复用首页方框）。
 
 import { h, confirmDialog } from './ui.js';
-import { buildTreeModel, layoutTree } from './tree.js';
+import { buildTreeModel, layoutTree, hash01 } from './tree.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -24,8 +24,35 @@ export function resetTree() {
   scrollLeft = null;
 }
 
-function treeModel(app) {
-  return buildTreeModel({ regions: app.regions, lit: app.lit, litDate: (id) => app.litDate(id), nameOf: (id) => app.regionName(id) });
+function treeModel(app, data) {
+  return buildTreeModel({ regions: app.regions, lit: data.lit, litDate: data.litDate, nameOf: (id) => app.regionName(id) });
+}
+
+// 【临时预览，看完删除】模拟全部点亮：只在 #/tree-all 页面、只在浏览器里计算，不修改也不保存任何相册数据。
+// 已点亮的区域保留真实日期；其余区域从今天起每隔 1～2 个月随机去一个，直到全部点亮。
+function simulateAll(app) {
+  const lit = new Set(app.lit);
+  const dates = new Map();
+  const targets = [...app.regions.byId.values()].filter((r) => r.level === 2 || r.children.length === 0).map((r) => r.id);
+  const rest = [];
+  for (const id of targets) {
+    if (app.lit.has(id) && app.litDate(id)) dates.set(id, app.litDate(id));
+    else rest.push(id);
+  }
+  rest.sort((a, b) => hash01(`sim#${a}`) - hash01(`sim#${b}`));
+  const d = new Date();
+  for (const id of rest) {
+    d.setDate(d.getDate() + 30 + Math.floor(hash01(`simgap#${id}`) * 31));
+    dates.set(id, `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+    lit.add(id);
+  }
+  for (const id of app.regions.level1) lit.add(id);
+  const litDate = (id) => {
+    const r = app.regions.byId.get(id);
+    if (r.level === 2 || !r.children.length) return dates.get(id) || null;
+    return r.children.map((c) => dates.get(c)).filter(Boolean).sort()[0] || null;
+  };
+  return { lit, litDate, last: d };
 }
 
 /** 树干一段：两侧是略带弧度的曲线，上下两端水平，相邻两段首尾宽度相同 */
@@ -77,12 +104,13 @@ function rootPaths(t, Y) {
   return out;
 }
 
-export function treeView(app) {
-  const model = treeModel(app);
+export function treeView(app, { simulate = false } = {}) {
+  const data = simulate ? simulateAll(app) : { lit: app.lit, litDate: (id) => app.litDate(id) };
+  const model = treeModel(app, data);
   // 与首页、一级区域页相同的格式：已点亮 x/333 个二级区域
   const level2 = [...app.regions.byId.values()].filter((r) => r.level === 2);
-  const litL2 = level2.filter((r) => app.lit.has(r.id)).length;
-  const head = h('div', { class: 'page-head' }, h('h1', null, '旅行树'), h('p', { class: 'sub' }, `已点亮 ${litL2}/${level2.length} 个二级区域`));
+  const litL2 = level2.filter((r) => data.lit.has(r.id)).length;
+  const head = h('div', { class: 'page-head' }, h('h1', null, '旅行树'), h('p', { class: 'sub' }, `已点亮 ${litL2}/${level2.length} 个二级区域`, simulate ? `　（模拟全部点亮，只是预览，不保存；模拟到 ${data.last.getFullYear()} 年）` : ''));
   const t = layoutTree(model);
   if (selected && !t.branches.some((b) => b.id === selected)) selected = null;
   const dateOf = new Map(t.branches.map((b) => [b.id, b.date]));
@@ -226,7 +254,7 @@ export function treeView(app) {
     const left = cx + b.x;
     const top = Y(b.y + b.size);
     canvas.appendChild(
-      h('div', { class: 'tree-box', style: { left: `${f(left)}px`, top: `${f(top)}px`, width: `${b.size}px`, height: `${b.size}px` }, dataset: { id: b.id, l1: b.l1, order: String(b.order), date: b.date } }, app.regionTile(b.id, { href: `#/r/${b.id}`, onclick: open }))
+      h('div', { class: 'tree-box', style: { left: `${f(left)}px`, top: `${f(top)}px`, width: `${b.size}px`, height: `${b.size}px` }, dataset: { id: b.id, l1: b.l1, order: String(b.order), date: b.date } }, app.regionTile(b.id, { href: `#/r/${b.id}`, onclick: open, lit: data.lit.has(b.id) }))
     );
     const ly = Y(b.label.y);
     canvas.appendChild(
