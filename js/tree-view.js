@@ -198,14 +198,16 @@ export function treeView(app) {
   }
 
   const scroller = h('div', { class: 'tree-scroll' }, canvas);
+  let positioned = false; // 定位完成前（以及被下一次渲染替换后）的滚动不记录
   scroller.addEventListener('scroll', () => {
-    scrollLeft = scroller.scrollLeft;
+    if (positioned && scroller.isConnected) scrollLeft = scroller.scrollLeft;
   });
   requestAnimationFrame(() => {
     if (!scroller.isConnected) return; // 已被下一次渲染替换
     // 第一次打开时树干位于视野中央；之后（自动同步、点开名称）保持用户滑到的位置
     scroller.scrollLeft = scrollLeft === null ? cx - scroller.clientWidth / 2 : scrollLeft;
     scrollLeft = scroller.scrollLeft;
+    positioned = true;
   });
 
   let info = null;
