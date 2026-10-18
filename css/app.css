@@ -73,9 +73,7 @@
   --tree-hi-opacity: 0.6;
   --tree-shade: #1d4ed8; /* 树干、树枝背光一侧 */
   --tree-shade-opacity: 0.7;
-  --tree-bark-line: rgba(30, 64, 175, 0.35); /* 树皮纹路 */
-  --tree-bark-crack: rgba(255, 255, 255, 0.55); /* 树皮上的短裂纹 */
-  --tree-scar: rgba(30, 64, 175, 0.28); /* 树疤 */
+  --tree-bark-line: rgba(30, 64, 175, 0.35); /* 主枝下沿暗影 */
   --tree-ground-shadow: rgba(30, 58, 138, 0.18); /* 树干在地面上的影子 */
   --tree-seam: rgba(255, 255, 255, 0.75); /* 相邻两段树干的接缝线 */
   --tree-seam-width: 1px;
@@ -1741,26 +1739,6 @@ textarea.input {
   fill: var(--tree-ground-shadow);
 }
 
-.tree-bark {
-  fill: none;
-  stroke: var(--tree-bark-line);
-  stroke-width: 1;
-  stroke-linecap: round;
-}
-
-.tree-crack {
-  fill: none;
-  stroke: var(--tree-bark-crack);
-  stroke-width: 1;
-  stroke-linecap: round;
-}
-
-.tree-scar {
-  fill: none;
-  stroke: var(--tree-scar);
-  stroke-width: 1.2;
-}
-
 .tree-branch-hi {
   fill: none;
   stroke: rgba(255, 255, 255, 0.7);
@@ -1799,6 +1777,10 @@ textarea.input {
 
 .tree-trunk {
   fill: url(#tree-grad-h);
+}
+
+.tree-trunk-edge {
+  fill: none;
   stroke: var(--tree-outline);
   stroke-width: var(--tree-outline-width);
 }
@@ -1882,7 +1864,7 @@ textarea.input {
   outline: none;
 }
 
-.tree-l1.sel .tree-trunk,
+.tree-l1.sel .tree-trunk-edge,
 .tree-l1.sel .tree-branch {
   stroke: var(--tree-sel);
   stroke-width: 1.5px;

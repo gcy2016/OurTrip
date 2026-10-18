@@ -2,7 +2,7 @@
 // 排序与几何全部在 js/tree.js 中算好，这里只负责画（SVG 画树干与枝条，区域框复用首页方框）。
 
 import { h, confirmDialog } from './ui.js';
-import { buildTreeModel, layoutTree, hash01 } from './tree.js';
+import { buildTreeModel, layoutTree } from './tree.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -41,42 +41,13 @@ function segmentPath(s, Y) {
   ].join('');
 }
 
-// 树皮纹理：每段树干几条竖向纹路，按圆柱面上固定的几个角度排布（越靠两侧越密，看起来是圆的）。
-// 纹路在上下两端的位置只取决于该处的树干宽度，而相接的两段在接口处宽度相同，
-// 所以树干段换了位置、和别的段相接，纹路也能对上
-const BARK_COLS = [-64, -40, -16, 10, 34, 58].map((a) => Math.sin((a * Math.PI) / 180) * 0.88);
-
-function barkPaths(s, Y) {
-  const out = [];
-  const h = s.y1 - s.y0;
-  BARK_COLS.forEach((c, i) => {
-    const amp = (hash01(`${s.id}#bark${i}`) - 0.5) * s.w0 * 0.3 * (1 - Math.abs(c) * 0.6);
-    const amp2 = (hash01(`${s.id}#bark2${i}`) - 0.5) * s.w0 * 0.3 * (1 - Math.abs(c) * 0.6);
-    const xa = c * s.w0;
-    const xb = c * s.w1;
-    const at = (t) => c * (s.w0 + (s.w1 - s.w0) * t);
-    out.push({
-      cls: 'tree-bark',
-      d: `M${f(xa)} ${f(Y(s.y0))}C${f(at(0.33) + amp)} ${f(Y(s.y0 + h * 0.33))} ${f(at(0.66) + amp2)} ${f(Y(s.y0 + h * 0.66))} ${f(xb)} ${f(Y(s.y1))}`,
-    });
-  });
-  // 段中间几道短裂纹，不碰到上下两端
-  for (let i = 0; i < 3; i++) {
-    const r = hash01(`${s.id}#crack${i}`);
-    const c = (hash01(`${s.id}#crackx${i}`) - 0.5) * 1.2;
-    const y = s.y0 + h * (0.2 + 0.6 * r);
-    const w = s.w0 + (s.w1 - s.w0) * ((y - s.y0) / h);
-    const len = Math.min(h * 0.18, 16 + r * 10);
-    out.push({ cls: 'tree-crack', d: `M${f(c * w)} ${f(Y(y))}q${f(w * 0.12)} ${f(-len / 2)} ${f(w * 0.04)} ${f(-len)}` });
-  }
-  // 部分树干段上有一个树疤
-  if (hash01(`${s.id}#knot`) < 0.45 && h > 60) {
-    const y = s.y0 + h * (0.3 + 0.4 * hash01(`${s.id}#knoty`));
-    const w = s.w0 + (s.w1 - s.w0) * ((y - s.y0) / h);
-    const x = (hash01(`${s.id}#knotx`) - 0.5) * w * 0.9;
-    out.push({ cls: 'tree-scar', ellipse: { cx: f(x), cy: f(Y(y)), rx: f(Math.max(2, w * 0.18)), ry: f(Math.max(3, w * 0.3)) } });
-  }
-  return out;
+/** 树干一段的两条侧边（亮边与光晕只画在两侧，上下接口不画，接缝处不会出现一道亮带） */
+function segmentSides(s, Y) {
+  const ym = (s.y0 + s.y1) / 2;
+  const wm = (s.w0 + s.w1) / 2;
+  const left = `M${f(-s.w0)} ${f(Y(s.y0))}Q${f(-wm - s.bulgeL)} ${f(Y(ym))} ${f(-s.w1)} ${f(Y(s.y1))}`;
+  const top = s.tip ? `Q0 ${f(Y(s.y1 + s.w1 * 2))} ${f(s.w1)} ${f(Y(s.y1))}` : `M${f(s.w1)} ${f(Y(s.y1))}`;
+  return `${left}${top}Q${f(wm + s.bulgeR)} ${f(Y(ym))} ${f(s.w0)} ${f(Y(s.y0))}`;
 }
 
 /** 主枝：沿中心线两侧偏移出轮廓，末端收尖 */
@@ -187,6 +158,7 @@ export function treeView(app) {
     const d = `M${-s.w0 - 10} ${Y(-2)}Q${-s.w0} ${Y(4)} ${-s.w0} ${Y(t.root.top)}L${s.w0} ${Y(t.root.top)}Q${s.w0} ${Y(4)} ${s.w0 + 10} ${Y(-2)}Z`;
     rootG.appendChild(svg('path', { class: 'tree-halo', d }));
     rootG.appendChild(svg('path', { class: 'tree-trunk', d }));
+    rootG.appendChild(svg('path', { class: 'tree-trunk-edge', d }));
   }
   bindPick(rootG, t.root.id);
   root.appendChild(rootG);
@@ -238,9 +210,10 @@ export function treeView(app) {
   for (const s of t.segments) {
     const g = svg('g', { class: `tree-l1${selected === s.id ? ' sel' : ''}`, 'data-id': s.id, 'data-seg': s.k });
     const d = segmentPath(s, Y);
-    g.appendChild(svg('path', { class: 'tree-halo', d }));
+    const sides = segmentSides(s, Y);
+    g.appendChild(svg('path', { class: 'tree-halo', d: sides }));
     g.appendChild(svg('path', { class: `tree-trunk shade-${s.shade}`, d }));
-    for (const t of barkPaths(s, Y)) g.appendChild(t.ellipse ? svg('ellipse', { class: t.cls, ...t.ellipse }) : svg('path', { class: t.cls, d: t.d }));
+    g.appendChild(svg('path', { class: 'tree-trunk-edge', d: sides }));
     // 接缝画成圆柱上的一圈（椭圆的前半边），看起来是圆的
     if (s.k > 0) g.appendChild(svg('path', { class: 'tree-seam', d: `M${f(-s.w0)} ${f(Y(s.y0))}A${f(s.w0)} ${f(s.w0 * 0.28)} 0 0 0 ${f(s.w0)} ${f(Y(s.y0))}` }));
     bindPick(g, s.id);

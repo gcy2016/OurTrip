@@ -89,9 +89,9 @@ export function hash01(str) {
 const lerp = (a, b, t) => a + (b - a) * t;
 const rnd = (id, salt, [a, b]) => lerp(a, b, hash01(`${id}#${salt}`));
 
-/** 树干半宽：只与在树干上的位置有关（与总数无关），新的一级区域加在顶端时下面的树干不变；下粗上细，越往上越细 */
-export function trunkHalf(k) {
-  return 6 + 14 * Math.exp(-k / 8);
+/** 树干半宽：上下一样粗（不越往上越细），只在树梢收成圆头（见 layoutTree 的 tip） */
+export function trunkHalf() {
+  return 22;
 }
 
 /** 主枝中心线在离树干中心 u 处的高度（相对节点） */
