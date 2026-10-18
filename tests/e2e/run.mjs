@@ -129,9 +129,10 @@ try {
 
   await step('首页 34 个一级区域；有二级区域的进入二级列表，没有的直接进入内容', async () => {
     assert.equal(await A.locator('.grid .tile').count(), 34);
-    // 时间线入口已由旅行树替代；还没有点亮的区域时旅行树入口也可以进入，只有根基
-    assert.equal(await A.locator('.entry-btn:has-text("时间线")').count(), 0);
-    await A.click('a.entry-btn:has-text("旅行树")');
+    // 首页入口是时间线；旅行树没有首页入口，直接打开 #/tree 时，还没有点亮的区域只显示根基
+    assert.equal(await A.locator('a.entry-btn:has-text("时间线")').count(), 1);
+    assert.equal(await A.locator('.entry-btn:has-text("旅行树")').count(), 0);
+    await A.goto(`${BASE}#/tree`);
     await A.waitForSelector('.tree-root');
     assert.equal(await A.locator('.tree-box').count(), 0);
     assert.equal(await A.locator('.tree-trunks .tree-l1').count(), 0);
@@ -822,8 +823,8 @@ try {
   });
 
   await step('时间线页：按点亮日期排列，距离与时间成比例，复用区域方框显示名称和日期', async () => {
-    // 时间线入口已由旅行树替代，页面代码保留，仍可直接打开
-    await A.goto(`${BASE}#/timeline`);
+    await A.goto(`${BASE}#/`);
+    await A.click('.entry-btn:has-text("时间线")');
     await A.waitForSelector('.tl-card');
     const expected = await A.evaluate(async () => {
       const m = await import('/js/album.js');
@@ -884,8 +885,7 @@ try {
   });
 
   await step('旅行树：固定根基上一级区域由下向上、第一条主枝向左并左右交替，点框查看点亮时间并可进入', async () => {
-    await A.goto(`${BASE}#/`);
-    await A.click('a.entry-btn:has-text("旅行树")');
+    await A.goto(`${BASE}#/tree`);
     await A.waitForSelector('.tree-box');
     const expect = await A.evaluate(async () => {
       const m = await import('/js/tree.js');

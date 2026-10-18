@@ -833,8 +833,8 @@ function homeView() {
       'div',
       { class: 'entry-row' },
       h('a', { class: 'entry-btn', href: '#/map' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🗺️'), '地图'),
-      // 旅行树替代时间线入口（时间线页面代码保留）；与地图一样，一个区域都没点亮时也可以进入（只有根基）
-      h('a', { class: 'entry-btn', href: '#/tree' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
+      // 首页入口用回时间线（用户 2026-10-18 决定）；旅行树代码保留，#/tree 仍可直接打开，首页不放入口
+      h('a', { class: 'entry-btn', href: '#/timeline' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🕒'), '时间线')
     ),
     h('div', { class: 'grid' }, app.regions.level1.map((id) => regionTile(id)))
   );
