@@ -60,24 +60,34 @@
 
   /* 旅行树外观（由 Muse 调整）：只改这里就能换树的颜色、粗细、字体；树的形状尺寸见 js/tree.js 顶部的 TREE_DIMS */
   --tree-bg: transparent; /* 树区域背景 */
-  --tree-bark: #6e8fb4; /* 树干（深浅交替的两种颜色，淡蓝灰系，与冷色主题统一） */
-  --tree-bark-alt: #7fa2c6;
-  --tree-seam: rgba(226, 238, 252, 0.6); /* 相邻两段树干的接缝线 */
+  --tree-edge: #2f7cf6; /* 树干、树枝两侧的颜色（半透明渐变的边） */
+  --tree-edge-opacity: 0.55;
+  --tree-mid: #7dd3fc; /* 树干、树枝中间的颜色（更透明） */
+  --tree-mid-opacity: 0.18;
+  --tree-outline: rgba(56, 189, 248, 0.9); /* 树干、树枝的亮边 */
+  --tree-outline-width: 1px;
+  --tree-glow: rgba(56, 189, 248, 0.22); /* 外圈光晕 */
+  --tree-glow-width: 7px;
+  --tree-core: rgba(255, 255, 255, 0.85); /* 树干中间的细亮线 */
+  --tree-seam: rgba(255, 255, 255, 0.75); /* 相邻两段树干的接缝线 */
   --tree-seam-width: 1px;
-  --tree-branch: #7a9cbd; /* 主枝 */
-  --tree-twig: #96b4d2; /* 小枝 */
-  --tree-twig-width: 2px;
-  --tree-leaf: #a9c6e2; /* 主枝上的小叶 */
-  --tree-root: #8a6a4c; /* 树根（重庆根基部分，保持不动） */
-  --tree-root-width: 5px;
-  --tree-ground: #cfe8c6; /* 地面（重庆根基部分，保持不动） */
-  --tree-knot: #56779b; /* 主枝与树干相接的节点 */
-  --tree-sel: #c9783a; /* 点开一级区域时高亮的颜色 */
-  --tree-box-radius: 9px; /* 区域框圆角 */
-  --tree-box-border: var(--lit); /* 区域框描边 */
-  --tree-name-size: 14px; /* 二级区域名称 */
-  --tree-name-color: var(--text);
-  --tree-name-font: 'MaShanZheng', 'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', serif;
+  --tree-twig: rgba(56, 189, 248, 0.75); /* 小枝 */
+  --tree-twig-width: 1.2px;
+  --tree-leaf: rgba(125, 211, 252, 0.45); /* 主枝上的小叶 */
+  --tree-leaf-outline: rgba(56, 189, 248, 0.8);
+  --tree-root: rgba(56, 189, 248, 0.7); /* 树根 */
+  --tree-root-width: 2px;
+  --tree-ground: rgba(56, 189, 248, 0.1); /* 地面光环 */
+  --tree-ring: rgba(56, 189, 248, 0.55);
+  --tree-knot: #ffffff; /* 主枝与树干相接的节点 */
+  --tree-knot-glow: rgba(56, 189, 248, 0.35);
+  --tree-sel: #0ea5e9; /* 点开一级区域时高亮的颜色 */
+  --tree-box-radius: 10px; /* 区域框圆角 */
+  --tree-box-border: rgba(56, 189, 248, 0.85); /* 区域框描边 */
+  --tree-box-glow: rgba(56, 189, 248, 0.35); /* 区域框外发光 */
+  --tree-name-size: 12px; /* 二级区域名称 */
+  --tree-name-color: #1e3a5f;
+  --tree-name-font: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
 
   /* 间距 */
   --gap: 16px;
@@ -1694,25 +1704,60 @@ textarea.input {
   overflow: visible;
 }
 
-.tree-ground {
+.tree-stop-edge {
+  stop-color: var(--tree-edge);
+  stop-opacity: var(--tree-edge-opacity);
+}
+
+.tree-stop-mid {
+  stop-color: var(--tree-mid);
+  stop-opacity: var(--tree-mid-opacity);
+}
+
+.tree-ground-fill {
   fill: var(--tree-ground);
 }
 
-.tree-trunk {
-  fill: var(--tree-bark);
+.tree-ring {
+  fill: none;
+  stroke: var(--tree-ring);
+  stroke-width: 1;
 }
 
-.tree-trunk.shade-1 {
-  fill: var(--tree-bark-alt);
+.tree-ring.inner {
+  stroke-dasharray: 3 5;
+  opacity: 0.7;
+}
+
+.tree-trunk {
+  fill: url(#tree-grad-h);
+  stroke: var(--tree-outline);
+  stroke-width: var(--tree-outline-width);
+}
+
+.tree-branch {
+  fill: url(#tree-grad-v);
+  stroke: var(--tree-outline);
+  stroke-width: var(--tree-outline-width);
+  stroke-linejoin: round;
+}
+
+.tree-halo {
+  fill: none;
+  stroke: var(--tree-glow);
+  stroke-width: var(--tree-glow-width);
+  stroke-linejoin: round;
+}
+
+.tree-core {
+  stroke: var(--tree-core);
+  stroke-width: 1;
+  stroke-linecap: round;
 }
 
 .tree-seam {
   stroke: var(--tree-seam);
   stroke-width: var(--tree-seam-width);
-}
-
-.tree-branch {
-  fill: var(--tree-branch);
 }
 
 .tree-hit {
@@ -1729,9 +1774,14 @@ textarea.input {
   stroke-linecap: round;
 }
 
+.tree-twig-dot {
+  fill: var(--tree-twig);
+}
+
 .tree-leaf {
   fill: var(--tree-leaf);
-  opacity: 0.92;
+  stroke: var(--tree-leaf-outline);
+  stroke-width: 0.8;
 }
 
 .tree-rootline {
@@ -1741,9 +1791,21 @@ textarea.input {
   stroke-linecap: round;
 }
 
+.tree-rootline.halo {
+  stroke: var(--tree-glow);
+  stroke-width: var(--tree-glow-width);
+}
+
 .tree-knot {
   fill: var(--tree-knot);
+  stroke: var(--tree-sel);
+  stroke-width: 1.2;
   cursor: pointer;
+}
+
+.tree-knot-halo {
+  fill: var(--tree-knot-glow);
+  pointer-events: none;
 }
 
 .tree-l1 {
@@ -1752,9 +1814,19 @@ textarea.input {
 }
 
 .tree-l1.sel .tree-trunk,
-.tree-l1.sel .tree-branch,
-.tree-knot.sel {
-  fill: var(--tree-sel);
+.tree-l1.sel .tree-branch {
+  stroke: var(--tree-sel);
+  stroke-width: 1.5px;
+}
+
+.tree-l1.sel .tree-halo,
+.tree-knot-halo.sel {
+  stroke: rgba(14, 165, 233, 0.4);
+  fill-opacity: 1;
+}
+
+.tree-knot-halo.sel {
+  fill: rgba(14, 165, 233, 0.45);
 }
 
 .tree-l1.sel .tree-rootline {
@@ -1769,11 +1841,12 @@ textarea.input {
   width: 100%;
   height: 100%;
   border-radius: var(--tree-box-radius);
-  box-shadow: 0 3px 10px rgba(47, 124, 246, 0.12), 0 1px 3px rgba(15, 23, 42, 0.08);
+  border-color: transparent;
+  box-shadow: 0 0 0 1px var(--tree-box-border), 0 0 12px var(--tree-box-glow);
 }
 
 .tree-box .tile.lit {
-  box-shadow: 0 0 0 1.5px var(--tree-box-border), 0 3px 10px rgba(47, 124, 246, 0.12);
+  box-shadow: 0 0 0 1px var(--tree-box-border), 0 0 12px var(--tree-box-glow);
 }
 
 .tree-box .tile-text,
@@ -1793,6 +1866,8 @@ textarea.input {
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--tree-name-color);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   pointer-events: none;
 }
 

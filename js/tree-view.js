@@ -111,14 +111,34 @@ export function treeView(app) {
   };
 
   const root = svg('svg', { class: 'tree-svg', width, height, viewBox: `${f(-cx)} 0 ${width} ${height}`, 'aria-hidden': 'false' });
-  root.appendChild(svg('ellipse', { class: 'tree-ground', cx: 0, cy: Y(-6), rx: 150, ry: 18 }));
+  // 科技感：树干、树枝用半透明渐变（两侧亮、中间透），外面一圈淡淡的光晕，颜色见 css/app.css 的 --tree-* 变量
+  const grad = (id, x2, y2) =>
+    svg(
+      'linearGradient',
+      { id, x1: 0, y1: 0, x2, y2 },
+      svg('stop', { offset: '0', class: 'tree-stop-edge' }),
+      svg('stop', { offset: '0.5', class: 'tree-stop-mid' }),
+      svg('stop', { offset: '1', class: 'tree-stop-edge' })
+    );
+  root.appendChild(svg('defs', null, grad('tree-grad-h', 1, 0), grad('tree-grad-v', 0, 1)));
+  // 地面：一圈发光的光环
+  const groundG = svg('g', { class: 'tree-ground' });
+  groundG.appendChild(svg('ellipse', { class: 'tree-ground-fill', cx: 0, cy: Y(-4), rx: 130, ry: 16 }));
+  groundG.appendChild(svg('ellipse', { class: 'tree-ring', cx: 0, cy: Y(-4), rx: 130, ry: 16 }));
+  groundG.appendChild(svg('ellipse', { class: 'tree-ring inner', cx: 0, cy: Y(-4), rx: 84, ry: 9 }));
+  root.appendChild(groundG);
 
   // 根基：树根伸进土里；有二级区域时是一小段底座
   const rootG = svg('g', { class: `tree-l1 tree-root${selected === t.root.id ? ' sel' : ''}`, 'data-id': t.root.id, tabindex: 0, role: 'button', 'aria-label': `根基 ${app.regionName(t.root.id)}` });
-  for (const d of rootPaths(t, Y)) rootG.appendChild(svg('path', { class: 'tree-rootline', d }));
+  for (const d of rootPaths(t, Y)) {
+    rootG.appendChild(svg('path', { class: 'tree-rootline halo', d }));
+    rootG.appendChild(svg('path', { class: 'tree-rootline', d }));
+  }
   if (t.root.kind === 'base' && t.segments.length) {
     const s = t.segments[0];
-    rootG.appendChild(svg('path', { class: 'tree-trunk shade-0', d: `M${-s.w0 - 10} ${Y(-2)}Q${-s.w0} ${Y(4)} ${-s.w0} ${Y(t.root.top)}L${s.w0} ${Y(t.root.top)}Q${s.w0} ${Y(4)} ${s.w0 + 10} ${Y(-2)}Z` }));
+    const d = `M${-s.w0 - 10} ${Y(-2)}Q${-s.w0} ${Y(4)} ${-s.w0} ${Y(t.root.top)}L${s.w0} ${Y(t.root.top)}Q${s.w0} ${Y(4)} ${s.w0 + 10} ${Y(-2)}Z`;
+    rootG.appendChild(svg('path', { class: 'tree-halo', d }));
+    rootG.appendChild(svg('path', { class: 'tree-trunk', d }));
   }
   bindPick(rootG, t.root.id);
   root.appendChild(rootG);
@@ -129,6 +149,7 @@ export function treeView(app) {
     const g = svg('g', { class: `tree-l1${selected === b.id ? ' sel' : ''}`, 'data-id': b.id, tabindex: 0, role: 'button', 'aria-label': app.regionName(b.id) });
     const d = branchPath(b, Y);
     g.appendChild(svg('path', { class: 'tree-hit', d })); // 加宽的透明描边，便于手指点中
+    g.appendChild(svg('path', { class: 'tree-halo', d }));
     g.appendChild(svg('path', { class: 'tree-branch', d }));
     bindPick(g, b.id);
     branchG.appendChild(g);
@@ -137,7 +158,8 @@ export function treeView(app) {
 
   const twigG = svg('g', { class: 'tree-twigs' });
   for (const w of t.twigs) {
-    twigG.appendChild(svg('path', { class: 'tree-twig', 'data-id': w.id, d: `M${f(w.from.x)} ${f(Y(w.from.y))}Q${f(w.ctrl.x)} ${f(Y(w.ctrl.y))} ${f(w.to.x)} ${f(Y(w.to.y))}` }));
+    twigG.appendChild(svg('path', { class: 'tree-twig', 'data-id': w.id, d: `M${f(w.from.x)} ${f(Y(w.from.y))}L${f(w.to.x)} ${f(Y(w.to.y))}` }));
+    twigG.appendChild(svg('circle', { class: 'tree-twig-dot', cx: f(w.from.x), cy: f(Y(w.from.y)), r: 1.8 }));
   }
   root.appendChild(twigG);
 
@@ -163,14 +185,22 @@ export function treeView(app) {
   const trunkG = svg('g', { class: 'tree-trunks' });
   for (const s of t.segments) {
     const g = svg('g', { class: `tree-l1${selected === s.id ? ' sel' : ''}`, 'data-id': s.id, 'data-seg': s.k });
-    g.appendChild(svg('path', { class: `tree-trunk shade-${s.shade}`, d: segmentPath(s, Y) }));
+    const d = segmentPath(s, Y);
+    g.appendChild(svg('path', { class: 'tree-halo', d }));
+    g.appendChild(svg('path', { class: `tree-trunk shade-${s.shade}`, d }));
     if (s.k > 0) g.appendChild(svg('line', { class: 'tree-seam', x1: f(-s.w0 + 1.5), x2: f(s.w0 - 1.5), y1: f(Y(s.y0)), y2: f(Y(s.y0)) }));
     bindPick(g, s.id);
     trunkG.appendChild(g);
   }
   root.appendChild(trunkG);
+  // 树干中间一条细亮线，从根基一直通到树梢
+  if (t.segments.length) {
+    const top = t.segments[t.segments.length - 1];
+    root.appendChild(svg('line', { class: 'tree-core', x1: 0, x2: 0, y1: f(Y(t.segments[0].y0 + 4)), y2: f(Y(top.y1 + top.w1)) }));
+  }
   // 节点：主枝与树干相接处的小圆点
   for (const b of t.branches) {
+    root.appendChild(svg('circle', { class: `tree-knot-halo${selected === b.id ? ' sel' : ''}`, cx: f(b.knot.x), cy: f(Y(b.knot.y)), r: 6.5 }));
     const k = svg('circle', { class: `tree-knot${selected === b.id ? ' sel' : ''}`, cx: f(b.knot.x), cy: f(Y(b.knot.y)), r: 3.2, 'data-id': b.id });
     bindPick(k, b.id);
     root.appendChild(k);
@@ -198,14 +228,16 @@ export function treeView(app) {
   }
 
   const scroller = h('div', { class: 'tree-scroll' }, canvas);
+  let positioned = false; // 定位完成前（以及被下一次渲染替换后）的滚动不记录
   scroller.addEventListener('scroll', () => {
-    scrollLeft = scroller.scrollLeft;
+    if (positioned && scroller.isConnected) scrollLeft = scroller.scrollLeft;
   });
   requestAnimationFrame(() => {
     if (!scroller.isConnected) return; // 已被下一次渲染替换
     // 第一次打开时树干位于视野中央；之后（自动同步、点开名称）保持用户滑到的位置
     scroller.scrollLeft = scrollLeft === null ? cx - scroller.clientWidth / 2 : scrollLeft;
     scrollLeft = scroller.scrollLeft;
+    positioned = true;
   });
 
   let info = null;
