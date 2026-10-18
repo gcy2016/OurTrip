@@ -17,7 +17,7 @@ import * as B from './boxes.js';
 import { appleMapsUrl, formatCoords, copyText, hasCoords } from './maps.js';
 import { NAMES_KEY } from './region-names.js';
 import { mapView, timelineView, resetViews } from './views.js';
-import { treeView, treeModel, resetTree } from './tree-view.js';
+import { treeView, resetTree } from './tree-view.js';
 
 const DEMO_PASSWORD = 'demo1234';
 const POLL_EVERY = 20000;
@@ -833,10 +833,8 @@ function homeView() {
       'div',
       { class: 'entry-row' },
       h('a', { class: 'entry-btn', href: '#/map' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🗺️'), '地图'),
-      // 旅行树替代时间线入口（时间线页面代码保留）；没有可作为根基的已点亮一级区域时置灰、不可点
-      treeModel(app).root
-        ? h('a', { class: 'entry-btn', href: '#/tree' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
-        : h('span', { class: 'entry-btn disabled', 'aria-disabled': 'true' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
+      // 旅行树替代时间线入口（时间线页面代码保留）；与地图一样，一个区域都没点亮时也可以进入（只有根基）
+      h('a', { class: 'entry-btn', href: '#/tree' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🌳'), '旅行树')
     ),
     h('div', { class: 'grid' }, app.regions.level1.map((id) => regionTile(id)))
   );

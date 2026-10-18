@@ -129,9 +129,14 @@ try {
 
   await step('首页 34 个一级区域；有二级区域的进入二级列表，没有的直接进入内容', async () => {
     assert.equal(await A.locator('.grid .tile').count(), 34);
-    // 还没有点亮的区域：旅行树入口置灰、不可点；时间线入口已由旅行树替代
-    assert.equal(await A.locator('span.entry-btn.disabled:has-text("旅行树")').count(), 1);
+    // 时间线入口已由旅行树替代；还没有点亮的区域时旅行树入口也可以进入，只有根基
     assert.equal(await A.locator('.entry-btn:has-text("时间线")').count(), 0);
+    await A.click('a.entry-btn:has-text("旅行树")');
+    await A.waitForSelector('.tree-root');
+    assert.equal(await A.locator('.tree-box').count(), 0);
+    assert.equal(await A.locator('.tree-trunks .tree-l1').count(), 0);
+    await A.goto(`${BASE}#/`);
+    await A.waitForSelector('.grid .tile');
     await A.click('.tile-title:text-is("A03")');
     await A.waitForSelector('.page-head h1:text-is("A03")');
     assert.equal(await A.locator('.grid .tile').count(), 11);
@@ -878,7 +883,7 @@ try {
     await A.setViewportSize({ width: 1100, height: 850 });
   });
 
-  await step('旅行树：根基为最早点亮的一级区域，一级区域由下向上、主枝左右交替，点框查看点亮时间并可进入', async () => {
+  await step('旅行树：固定根基上一级区域由下向上、第一条主枝向左并左右交替，点框查看点亮时间并可进入', async () => {
     await A.goto(`${BASE}#/`);
     await A.click('a.entry-btn:has-text("旅行树")');
     await A.waitForSelector('.tree-box');
@@ -886,7 +891,7 @@ try {
       const m = await import('/js/tree.js');
       const app = window.__app;
       const model = m.buildTreeModel({ regions: app.regions, lit: app.lit, litDate: (id) => app.litDate(id), nameOf: (id) => app.regionName(id) });
-      const all = [model.root, ...model.levels];
+      const all = model.levels;
       const count = all.reduce((n, l) => n + (l.selfBox ? 1 : l.kids.length), 0);
       return { order: all.map((l) => l.id), dates: all.map((l) => l.date), count };
     });
@@ -913,6 +918,7 @@ try {
     const tops = branches.map((b) => b.top);
     assert.deepEqual(tops, [...tops].sort((a, b) => b - a));
     const onLeft = branches.map((b) => b.right <= trunkX + 1);
+    assert.equal(onLeft[0], true, '最靠近根基的第一条主枝向左');
     for (let i = 1; i < onLeft.length; i++) assert.notEqual(onLeft[i], onLeft[i - 1], '主枝左右交替');
     // 点主枝：显示一级区域完整名称与点亮时间，再点关闭
     const l1 = branches[branches.length - 1].id;

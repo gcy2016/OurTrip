@@ -79,8 +79,6 @@
   --tree-seam-width: 1px;
   --tree-twig: rgba(56, 189, 248, 0.75); /* 小枝 */
   --tree-twig-width: 1.2px;
-  --tree-leaf: rgba(125, 211, 252, 0.45); /* 主枝上的小叶 */
-  --tree-leaf-outline: rgba(56, 189, 248, 0.8);
   --tree-root: rgba(56, 189, 248, 0.7); /* 树根 */
   --tree-root-width: 2px;
   --tree-ground: rgba(56, 189, 248, 0.1); /* 地面光环 */
@@ -1670,14 +1668,6 @@ textarea.input {
    ========================================================================= */
 
 
-.entry-btn.disabled {
-  border-color: var(--line);
-  color: var(--text-secondary);
-  opacity: 0.55;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
 .tree-hint {
   margin: -4px 0 6px;
   font-size: 13px;
@@ -1829,12 +1819,6 @@ textarea.input {
   fill: var(--tree-twig);
 }
 
-.tree-leaf {
-  fill: var(--tree-leaf);
-  stroke: var(--tree-leaf-outline);
-  stroke-width: 0.8;
-}
-
 .tree-rootline {
   fill: none;
   stroke: var(--tree-root);
@@ -1878,10 +1862,6 @@ textarea.input {
 
 .tree-knot-halo.sel {
   fill: rgba(14, 165, 233, 0.45);
-}
-
-.tree-l1.sel .tree-rootline {
-  stroke: var(--tree-sel);
 }
 
 .tree-box {

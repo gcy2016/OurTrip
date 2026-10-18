@@ -44,40 +44,28 @@ function rects(t) {
   return out;
 }
 
-test('没有点亮的一级区域时没有根基', () => {
-  const m = buildTreeModel(data({}));
-  assert.equal(m.root, null);
-  assert.equal(layoutTree(m).root, null);
+test('根基是固定的底座：一个区域都没点亮时也有，只有根基', () => {
+  const t = layoutTree(buildTreeModel(data({})));
+  assert.equal(t.root.kind, 'base');
+  assert.equal(t.segments.length, 0);
+  assert.equal(t.boxes.length, 0);
 });
 
-test('首次探索最早的一级区域作为根基（不固定为某个区域）', () => {
-  const t = tree({ 'A03-C01': '2022-01-01', A01: '2023-01-01', 'A04-C02': '2021-05-01' });
-  assert.equal(t.root.id, 'A04');
-  assert.equal(t.root.kind, 'base'); // 有二级区域：底座 + 上方一段承接自己主枝的树干
-  assert.deepEqual(trunkOrder(t), ['A04', 'A03', 'A01']);
-  assert.ok(t.boxes.some((b) => b.id === 'A04-C02' && b.l1 === 'A04')); // 根基的二级区域分枝保留
-});
-
-test('根基没有二级区域：根基就是它自身的区域框，不额外增加主干', () => {
-  const t = tree({ A22: '2020-01-01', 'A03-C01': '2022-01-01', 'A03-C02': '2022-02-01' });
-  assert.equal(t.root.id, 'A22');
-  assert.equal(t.root.kind, 'box');
-  assert.deepEqual(trunkOrder(t), ['A03']);
-  assert.ok(!t.branches.some((b) => b.id === 'A22'));
-  const rb = t.boxes.find((b) => b.id === 'A22');
-  assert.ok(rb.root && rb.y > 0 && Math.abs(rb.x + rb.size / 2) < 1e-9);
-  assert.ok(t.segments[0].y0 <= t.root.top); // 树干从根基框的上边长出
-});
-
-test('只有一个一级区域：只显示根基；有二级区域时保留其分枝', () => {
-  const a = tree({ A01: '2024-01-01' });
-  assert.equal(a.root.kind, 'box');
-  assert.equal(a.segments.length, 0);
-  assert.equal(a.boxes.length, 1);
-  const b = tree({ 'A05-C03': '2024-01-01', 'A05-C01': '2024-02-01' });
-  assert.equal(b.root.id, 'A05');
-  assert.deepEqual(trunkOrder(b), ['A05']);
-  assert.deepEqual(b.boxes.map((x) => x.id), ['A05-C03', 'A05-C01']);
+test('根基不属于任何区域：最早的一级区域（有无二级区域都一样）在根基上方第一段树干，长一条向左的主枝', () => {
+  for (const dates of [
+    { 'A03-C01': '2022-01-01', A01: '2023-01-01', 'A04-C02': '2021-05-01' },
+    { A22: '2021-05-01', 'A03-C01': '2022-01-01', A01: '2023-01-01' },
+  ]) {
+    const t = tree(dates);
+    const first = trunkOrder(t)[0];
+    assert.equal(t.root.id, undefined);
+    assert.equal(t.segments[0].y0 < t.root.top, true); // 第一段树干从根基上长出
+    assert.equal(sides(t)[first], -1);
+    assert.ok(t.boxes.filter((b) => b.l1 === first).every((b) => b.x + b.size < 0)); // 区域框挂在主枝上，不在树干中间
+  }
+  const one = tree({ A01: '2024-01-01' });
+  assert.deepEqual(trunkOrder(one), ['A01']);
+  assert.deepEqual(one.boxes.map((b) => b.id), ['A01']);
 });
 
 test('一级区域由下向上按首次探索时间排列；每个一级区域只有一条主枝', () => {
@@ -88,8 +76,8 @@ test('一级区域由下向上按首次探索时间排列；每个一级区域�
   assert.equal(new Set(t.branches.map((b) => b.id)).size, t.branches.length);
 });
 
-test('主枝左右：根基以外最靠近根基的第一个向左，向上严格交替；方向由位置决定', () => {
-  const dates = { A22: '2019-01-01', 'A03-C01': '2020-01-01', 'A04-C01': '2021-01-01', 'A05-C01': '2022-01-01', A01: '2023-01-01' };
+test('主枝左右：最靠近根基的第一个向左，向上严格交替；方向由位置决定', () => {
+  const dates = { 'A03-C01': '2020-01-01', 'A04-C01': '2021-01-01', 'A05-C01': '2022-01-01', A01: '2023-01-01' };
   const t = tree(dates);
   assert.deepEqual(sides(t), { A03: -1, A04: 1, A05: -1, A01: 1 });
   // 补录更早的 A05：位置变化后方向按新位置重算，受影响的主枝连同框镜像到另一侧
@@ -98,11 +86,6 @@ test('主枝左右：根基以外最靠近根基的第一个向左，向上严�
   assert.deepEqual(sides(t2), { A05: -1, A03: 1, A04: -1, A01: 1 });
   for (const b of t2.boxes.filter((x) => x.l1 === 'A03')) assert.ok(b.x > 0, '向右的主枝上的框都在右侧');
   for (const b of t2.boxes.filter((x) => x.l1 === 'A05')) assert.ok(b.x + b.size < 0);
-});
-
-test('根基有二级区域时，根基自己的主枝向右，上方第一个一级区域向左', () => {
-  const t = tree({ 'A03-C01': '2020-01-01', 'A04-C01': '2021-01-01', 'A05-C01': '2022-01-01' });
-  assert.deepEqual(sides(t), { A03: 1, A04: -1, A05: 1 });
 });
 
 test('二级区域只在所属主枝上，沿主枝路径按时间由近到远排列、上下交替', () => {
@@ -150,7 +133,7 @@ test('同一天：按拼音排序，再按区域编码；地名多音字按地�
 test('没有二级区域的一级区域：各占一个节点、一条主枝，末端挂自身的区域框，参与排序与交替', () => {
   const t = tree({ 'A03-C01': '2020-01-01', A01: '2021-01-01', A02: '2021-02-01', A09: '2021-03-01', A32: '2021-04-01', A33: '2021-05-01', A34: '2021-06-01' });
   assert.deepEqual(trunkOrder(t), ['A03', 'A01', 'A02', 'A09', 'A32', 'A33', 'A34']);
-  assert.deepEqual(sides(t), { A03: 1, A01: -1, A02: 1, A09: -1, A32: 1, A33: -1, A34: 1 });
+  assert.deepEqual(sides(t), { A03: -1, A01: 1, A02: -1, A09: 1, A32: -1, A33: 1, A34: -1 });
   for (const id of ['A01', 'A02', 'A09', 'A32', 'A33', 'A34']) {
     const own = t.boxes.filter((b) => b.l1 === id);
     assert.deepEqual(own.map((b) => b.id), [id]);
@@ -181,7 +164,7 @@ test('全部点亮时框与名称互不重叠，树向上和两侧扩展', () =>
     }
   }
   const t = tree(dates);
-  assert.equal(t.segments.length + (t.root.kind === 'box' ? 1 : 0), 34);
+  assert.equal(t.segments.length, 34);
   assert.equal(t.boxes.length, 333 + 7);
   const rs = rects(t);
   for (let i = 0; i < rs.length; i++) {
@@ -189,12 +172,12 @@ test('全部点亮时框与名称互不重叠，树向上和两侧扩展', () =>
     for (let j = i + 1; j < rs.length; j++) assert.ok(!overlap(rs[i], rs[j]), `${rs[i].id} 与 ${rs[j].id} 重叠`);
   }
   // 框不压在树干上
-  for (const b of t.boxes.filter((x) => !x.root)) assert.ok(b.x > 20 || b.x + b.size < -20, b.id);
-  // 树干由下向上变细，各段首尾相接
+  for (const b of t.boxes) assert.ok(b.x > 20 || b.x + b.size < -20, b.id);
+  // 树干上下一样粗（不越往上越细），各段首尾相接
   for (let i = 1; i < t.segments.length; i++) {
     assert.equal(t.segments[i].y0, t.segments[i - 1].y1);
     assert.equal(t.segments[i].w0, t.segments[i - 1].w1);
-    assert.ok(t.segments[i].w0 <= t.segments[i - 1].w0);
+    assert.equal(t.segments[i].w0, t.segments[0].w0);
   }
   // 二级区域多的省只向横向扩展，不改变树干上的间距
   const gaps = t.branches.slice(1).map((b, i) => b.y - t.branches[i].y);
@@ -206,6 +189,6 @@ test('修改二级区域的时间使一级区域时间变化后，重新排序',
   assert.deepEqual(trunkOrder(tree(dates)), ['A03', 'A04', 'A05']);
   const t = tree({ ...dates, 'A04-C01': '2024-01-01' }); // A04 的计算时间变为 2023-06-01
   assert.deepEqual(trunkOrder(t), ['A03', 'A05', 'A04']);
-  assert.deepEqual(sides(t), { A03: 1, A05: -1, A04: 1 });
+  assert.deepEqual(sides(t), { A03: -1, A05: 1, A04: -1 });
   assert.deepEqual(t.boxes.filter((b) => b.l1 === 'A04').map((b) => b.id), ['A04-C02', 'A04-C01']);
 });

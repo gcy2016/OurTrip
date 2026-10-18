@@ -33,7 +33,7 @@ export function compareRegions(a, b) {
  * @param {Set<string>} p.lit 已点亮的区域
  * @param {(id: string) => string|null} p.litDate 点亮日期 YYYY-MM-DD（一级区域取下属最早日期）
  * @param {(id: string) => string} p.nameOf 区域名称（用于同日排序）
- * @returns {{root: object|null, levels: object[]}} root 为根基，levels 为根基以外的一级区域（由下向上）
+ * @returns {{levels: object[]}} 已点亮的一级区域，由下向上（最早点亮的在最下面）
  *   一级区域：{ id, name, date, selfBox, kids: [{id, name, date}] }；selfBox 表示没有二级区域、主枝末端挂自身的区域框
  */
 export function buildTreeModel({ regions, lit, litDate, nameOf }) {
@@ -53,7 +53,7 @@ export function buildTreeModel({ regions, lit, litDate, nameOf }) {
     l1s.push({ id, name: nameOf(id), date, selfBox, kids });
   }
   l1s.sort(compareRegions);
-  return { root: l1s[0] || null, levels: l1s.slice(1) };
+  return { levels: l1s };
 }
 
 // ---------- 布局 ----------
@@ -70,7 +70,6 @@ export const TREE_DIMS = {
   tail: 22, // 主枝越过最后一个框的长度
   rise: [10, 26], // 主枝向上翘起的高度
   gapY: 16, // 同侧上下两条主枝的区域之间至少留出的空隙
-  rootPad: 8, // 根基区域框与地面的距离
 };
 
 /** 稳定的伪随机数：由编号算出，相同数据每次都一样 */
@@ -108,11 +107,11 @@ function branchWidth(br, u) {
 
 /**
  * 布局（纯计算）。
- * @param {{root, levels}} model buildTreeModel 的结果
+ * @param {{levels}} model buildTreeModel 的结果
  * @param {object} [dims] 尺寸，默认 TREE_DIMS
  * @returns 几何数据：
- *   root: { id, kind: 'box'|'base', top }（kind 为 box 时根基就是该区域自身的框，树干从框的上边长出）
- *   segments: 树干分段 [{ id, k, y0, y1, w0, w1, bulgeL, bulgeR, shade, root, tip }]
+ *   root: { kind: 'base', top }（固定的底座，不属于任何区域）
+ *   segments: 树干分段 [{ id, k, y0, y1, w0, w1, bulgeL, bulgeR, shade, tip }]
  *   branches: 主枝 [{ id, side, y, u0, u1, points: [{x, y, w}], knot: {x, y}, date, seq }]
  *   twigs: 小枝 [{ id, l1, from: {x, y}, ctrl: {x, y}, to: {x, y}, seq }]
  *   boxes: 区域框 [{ id, l1, x, y, size, above, order, label: {x, y, anchor}, date, seq }]（x, y 为框左下角）
@@ -121,41 +120,19 @@ function branchWidth(br, u) {
 export function layoutTree(model, dims = TREE_DIMS) {
   const D = { ...TREE_DIMS, ...dims };
   const out = { root: null, segments: [], branches: [], twigs: [], boxes: [], bounds: { minX: 0, maxX: 0, maxY: 0 } };
-  const { root, levels } = model;
-  if (!root) return out;
+  const { levels } = model;
   let seq = 0;
 
   const extent = D.twig[1] + D.box + D.labelGap + D.label; // 主枝上方（或下方）区域框连同名称的最大高度
   const S = extent + D.rise[1] / 2 + D.gapY / 2 + 2; // 树干上相邻一级区域的间距（同侧两条主枝相隔 2S）
 
-  // 根基：没有二级区域时就是它自身的区域框（树干从框上边长出）；有二级区域时是一段带树根的底座，上方再长一段树干承接它的主枝
-  let base;
-  const onTrunk = levels.slice();
-  if (root.selfBox) {
-    const y = D.label + D.labelGap + D.rootPad;
-    out.boxes.push({
-      id: root.id,
-      l1: root.id,
-      x: -D.box / 2,
-      y,
-      size: D.box,
-      above: false,
-      order: 0,
-      root: true,
-      label: { x: 0, y: y - D.labelGap, anchor: 'top' },
-      date: root.date,
-      seq: seq++,
-    });
-    base = y + D.box;
-    out.root = { id: root.id, kind: 'box', top: base, date: root.date };
-  } else {
-    base = 22;
-    out.root = { id: root.id, kind: 'base', top: base, date: root.date };
-    onTrunk.unshift(root);
-  }
+  // 根基：固定的底座（树根与地面），不属于任何区域；一个区域都没点亮时也画出来
+  const base = 22;
+  out.root = { kind: 'base', top: base };
   out.bounds.minX = -D.box;
   out.bounds.maxX = D.box;
-  out.bounds.maxY = base;
+  out.bounds.maxY = base + 40;
+  const onTrunk = levels;
   if (!onTrunk.length) return out;
 
   // 节点高度：第一个节点离地面足够高，下方的框不碰到地面
@@ -178,17 +155,13 @@ export function layoutTree(model, dims = TREE_DIMS) {
       bulgeL: rnd(l1.id, 'bl', [-1.5, 3.5]),
       bulgeR: rnd(l1.id, 'br', [-1.5, 3.5]),
       shade: k % 2,
-      root: l1 === root,
       seq: seq++,
     });
   });
 
-  // 主枝方向：根基以外最靠近根基的第一个一级区域向左，向上严格左右交替（按位置，不按区域）；
-  // 根基自己的主枝（根基有二级区域时）向右，与上方第一条主枝错开
-  const sideOf = (l1, idx) => (l1 === root ? 1 : idx % 2 === 0 ? -1 : 1);
-  let nonRoot = 0;
+  // 主枝方向：最靠近根基的第一个一级区域向左，向上严格左右交替（按位置，不按区域）
   onTrunk.forEach((l1, k) => {
-    const side = sideOf(l1, l1 === root ? 0 : nonRoot++);
+    const side = k % 2 === 0 ? -1 : 1;
     const y = ys[k];
     const u0 = trunkHalf(k) - 1;
     const kids = l1.selfBox ? [{ id: l1.id, name: l1.name, date: l1.date }] : l1.kids;

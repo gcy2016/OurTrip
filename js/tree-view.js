@@ -24,8 +24,7 @@ export function resetTree() {
   scrollLeft = null;
 }
 
-/** 首页入口能否进入：有可用于建立根基的已点亮一级区域 */
-export function treeModel(app) {
+function treeModel(app) {
   return buildTreeModel({ regions: app.regions, lit: app.lit, litDate: (id) => app.litDate(id), nameOf: (id) => app.regionName(id) });
 }
 
@@ -62,7 +61,7 @@ function branchPath(b, Y) {
 function rootPaths(t, Y) {
   const out = [];
   const top = t.root.top;
-  const half = t.root.kind === 'box' ? t.boxes[0].size / 2 : 14;
+  const half = 14;
   const spread = [
     [-1, 0.55, 46],
     [-1, 0.2, 74],
@@ -70,8 +69,8 @@ function rootPaths(t, Y) {
     [1, 0.75, 88],
   ];
   for (const [side, from, reach] of spread) {
-    const x0 = side * half * (t.root.kind === 'box' ? 1 : from);
-    const y0 = t.root.kind === 'box' ? top * from : top;
+    const x0 = side * half * from;
+    const y0 = top;
     const x1 = side * (half + reach);
     out.push(`M${f(x0)} ${f(Y(y0))}Q${f(side * (half + reach * 0.35))} ${f(Y(y0 * 0.3))} ${f(x1)} ${f(Y(-4))}`);
   }
@@ -84,11 +83,9 @@ export function treeView(app) {
   const level2 = [...app.regions.byId.values()].filter((r) => r.level === 2);
   const litL2 = level2.filter((r) => app.lit.has(r.id)).length;
   const head = h('div', { class: 'page-head' }, h('h1', null, '旅行树'), h('p', { class: 'sub' }, `已点亮 ${litL2}/${level2.length} 个二级区域`));
-  if (!model.root) return h('section', null, head, h('div', { class: 'empty' }, '还没有点亮的区域。'));
-
   const t = layoutTree(model);
-  if (selected && !t.branches.some((b) => b.id === selected) && t.root.id !== selected) selected = null;
-  const dateOf = new Map([[t.root.id, t.root.date], ...t.branches.map((b) => [b.id, b.date])]);
+  if (selected && !t.branches.some((b) => b.id === selected)) selected = null;
+  const dateOf = new Map(t.branches.map((b) => [b.id, b.date]));
 
   // 画布：左右留白，内容比屏幕窄时树干放在正中
   const pad = 24;
@@ -147,20 +144,19 @@ export function treeView(app) {
   groundG.appendChild(svg('ellipse', { class: 'tree-shadow', cx: 10, cy: Y(-3), rx: 46, ry: 7 }));
   root.appendChild(groundG);
 
-  // 根基：树根伸进土里；有二级区域时是一小段底座
-  const rootG = svg('g', { class: `tree-l1 tree-root${selected === t.root.id ? ' sel' : ''}`, 'data-id': t.root.id, tabindex: 0, role: 'button', 'aria-label': `根基 ${app.regionName(t.root.id)}` });
+  // 根基：固定的底座（树根伸进土里），不属于任何区域，不能点；一个区域都没点亮时只有底座
+  const rootG = svg('g', { class: 'tree-root' });
   for (const d of rootPaths(t, Y)) {
     rootG.appendChild(svg('path', { class: 'tree-rootline halo', d }));
     rootG.appendChild(svg('path', { class: 'tree-rootline', d }));
   }
-  if (t.root.kind === 'base' && t.segments.length) {
-    const s = t.segments[0];
-    const d = `M${-s.w0 - 10} ${Y(-2)}Q${-s.w0} ${Y(4)} ${-s.w0} ${Y(t.root.top)}L${s.w0} ${Y(t.root.top)}Q${s.w0} ${Y(4)} ${s.w0 + 10} ${Y(-2)}Z`;
-    rootG.appendChild(svg('path', { class: 'tree-halo', d }));
-    rootG.appendChild(svg('path', { class: 'tree-trunk', d }));
-    rootG.appendChild(svg('path', { class: 'tree-trunk-edge', d }));
-  }
-  bindPick(rootG, t.root.id);
+  const w = t.segments.length ? t.segments[0].w0 : 22;
+  const top = t.root.top;
+  const cap = t.segments.length ? `L${w} ${f(Y(top))}` : `Q0 ${f(Y(top + w * 1.6))} ${w} ${f(Y(top))}`; // 还没有树干时顶上收成圆头
+  const baseD = `M${-w - 10} ${f(Y(-2))}Q${-w} ${f(Y(4))} ${-w} ${f(Y(top))}${cap}Q${w} ${f(Y(4))} ${w + 10} ${f(Y(-2))}Z`;
+  rootG.appendChild(svg('path', { class: 'tree-halo', d: baseD }));
+  rootG.appendChild(svg('path', { class: 'tree-trunk', d: baseD }));
+  rootG.appendChild(svg('path', { class: 'tree-trunk-edge', d: baseD }));
   root.appendChild(rootG);
 
   // 主枝在树干下面画，接缝被树干盖住
@@ -187,23 +183,6 @@ export function treeView(app) {
   }
   root.appendChild(twigG);
 
-  // 叶子：在每条主枝上点缀两片小叶（纯装饰，不参与布局计算）
-  const leafG = svg('g', { class: 'tree-leaves' });
-  for (const b of t.branches) {
-    const pts = b.points;
-    if (pts.length < 4) continue;
-    [[0.33, -1], [0.66, 1]].forEach(([frac, s]) => {
-      const i = Math.max(1, Math.min(pts.length - 2, Math.round(pts.length * frac)));
-      const p = pts[i];
-      const cxp = f(p.x), cyp = f(Y(p.y) + s * 7);
-      const tilt = b.side > 0 ? s * 24 : -s * 24;
-      leafG.appendChild(svg('ellipse', {
-        class: 'tree-leaf', cx: cxp, cy: cyp, rx: 7, ry: 3.1,
-        transform: `rotate(${f(tilt)} ${cxp} ${cyp})`,
-      }));
-    });
-  }
-  root.appendChild(leafG);
 
   // 树干：每个一级区域一段，深浅交替，接缝处一条淡线
   const trunkG = svg('g', { class: 'tree-trunks' });
