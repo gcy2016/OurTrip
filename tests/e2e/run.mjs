@@ -204,13 +204,34 @@ try {
   await step('点亮：上传后二级区域及其一级区域自动点亮', async () => {
     const lit = await A.evaluate(() => [...window.__app.lit]);
     assert.deepEqual(lit.sort(), ['A03', 'A03-C01']);
-    // 首页：已点亮的排在最前；没有设置封面时自动显示区域内的照片；不再单独显示“已点亮”标签
+    // 首页：已点亮的排在最前；不再单独显示“已点亮”标签；省级区域不自动取区域内的照片
     await A.goto(`${BASE}#/`);
-    await A.waitForSelector('.grid .tile.lit.has-photo');
+    await A.waitForSelector('.grid .tile.lit');
     assert.equal(await A.textContent('.grid .tile:first-child .tile-title'), 'A03');
     assert.equal(await A.textContent('.grid .tile:nth-child(2) .tile-title'), 'A01');
-    assert.equal(await A.locator('.grid .tile.has-photo').count(), 1);
+    assert.equal(await A.locator('.grid .tile.has-photo').count(), 0); // 名称未上传：没有代表照片，也不自动取照片
     assert.equal(await A.locator('.tile :text-is("已点亮")').count(), 0);
+    // 省级代表照片（按省名对应）：未点亮灰白，点亮后彩色
+    await A.evaluate(() => {
+      window.__app.names = { A03: '河南', A04: '吉林省' };
+      window.__app.render();
+    });
+    await A.waitForSelector('.grid .tile.lit.has-photo img:not(.grey)');
+    const rep = await A.$$eval('.grid .tile.has-photo', (els) =>
+      els.map((e) => ({ name: e.querySelector('.tile-title').textContent, lit: e.classList.contains('lit'), grey: e.querySelector('img').classList.contains('grey'), src: decodeURIComponent(e.querySelector('img').getAttribute('src')) }))
+    );
+    assert.deepEqual(rep, [
+      { name: '河南', lit: true, grey: false, src: 'images/provinces/河南.jpg' },
+      { name: '吉林省', lit: false, grey: true, src: 'images/provinces/吉林.jpg' },
+    ]);
+    assert.equal(await A.$eval('.grid .tile.has-photo img.grey', (e) => getComputedStyle(e).filter), 'grayscale(1)');
+    await A.waitForFunction(() => [...document.querySelectorAll('.grid .tile.has-photo img')].every((i) => i.complete && i.naturalWidth > 0));
+    await A.screenshot({ path: join(SHOTS, 'home-province-photos.png') });
+    await A.evaluate(() => {
+      window.__app.names = {};
+      window.__app.render();
+    });
+    // 二级区域：没有设置封面时自动显示区域内的照片
     await A.goto(`${BASE}#/r/A03`);
     await A.waitForSelector('.grid .tile.lit.has-photo');
     assert.equal(await A.textContent('.grid .tile:first-child .tile-title'), 'A03-C01');

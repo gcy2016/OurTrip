@@ -565,6 +565,12 @@ textarea.input {
 }
 
 /* 有照片时：白字压在底部渐隐条上 */
+/* 未点亮省份的代表照片：灰白、淡一些；点亮后恢复彩色（PRD 2.2） */
+.tile-bg img.grey {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
 .tile.has-photo {
   border-color: transparent;
   color: #fff;

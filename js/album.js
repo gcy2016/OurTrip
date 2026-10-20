@@ -565,39 +565,41 @@ export function resolveCover(album, regions, targetId) {
 }
 
 /**
- * 固定区域的背景：用户在网页上选的照片与仓库配置的代表图片“谁后设置谁生效”，可以互相替换；
- * 生效的一方失效（照片被删/移走、没有配置图片）时用另一方；两者都没有时返回 null，由页面显示纯色。
- * display：仓库配置 { image, imageUpdatedAt }，imageUpdatedAt 为日期字符串（如 '2026-10-15 20:00'）。
+ * 固定区域的背景（PRD 2.2），返回 null 时由页面显示纯色：
+ * - 一级区域（省级）：用户设置的封面 > 省级代表照片（未点亮时 grey: true，显示为灰白色；点亮后为彩色）；
+ *   不自动取区域内的照片。用户封面加载失败时显示代表照片。
+ * - 二级区域：用户设置的封面 > 自动取区域内的一张照片 > 纯色；没有代表照片。
+ * @param {{ provinceImage?: string|null, autoPhoto?: string|null, lit?: boolean }} opts
  */
-export function resolveRegionBackground(album, regions, regionId, display = {}, autoPhoto = null) {
-  const c = album.regionCovers[regionId];
+export function resolveRegionBackground(album, regions, regionId, { provinceImage = null, autoPhoto = null, lit = false } = {}) {
+  const r = regions.byId.get(regionId);
+  if (!r) return null;
   const photo = resolveCover(album, regions, regionId);
-  const userAt = photo ? (typeof c === 'object' && c && Number(c.at)) || 0 : -1;
-  const image = display && display.image ? String(display.image) : null;
-  const codeAt = image ? Date.parse(String(display.imageUpdatedAt || '').replace(' ', 'T')) || 0 : -1;
-  const auto = autoPhoto ? { kind: 'photo', photoId: autoPhoto } : null;
-  if (photo && (!image || userAt >= codeAt)) return { kind: 'photo', photoId: photo, fallback: image ? { kind: 'image', src: image, fallback: auto } : auto };
-  if (image) return { kind: 'image', src: image, fallback: photo ? { kind: 'photo', photoId: photo, fallback: auto } : auto };
-  return auto;
+  const fallback =
+    r.level === 1
+      ? provinceImage
+        ? { kind: 'image', src: provinceImage, grey: !lit }
+        : null
+      : autoPhoto
+        ? { kind: 'photo', photoId: autoPhoto }
+        : null;
+  if (photo) return { kind: 'photo', photoId: photo, fallback };
+  return fallback;
 }
 
 /**
- * 固定区域的自动封面：没有生效的用户封面或仓库图片时，取区域内的一张照片（PRD 2.2）。
+ * 二级区域的自动封面：用户没有设置封面时，取区域内的一张照片（PRD 2.2；省级区域不自动取）。
  * 取哪一张由《界面显示规范》规定；规范出来之前暂取最早上传的一张，新增照片时封面不会跳动。
- * 一次遍历算出全部区域，返回 Map(区域编号 → 照片 id)；一级区域取其下属全部照片中最早的一张。
+ * 一次遍历算出全部二级区域，返回 Map(区域编号 → 照片 id)。
  */
 export function autoRegionCovers(album, regions) {
   const best = new Map();
-  const consider = (rid, p) => {
-    const cur = best.get(rid);
-    if (!cur || (p.uploadedAt || 0) < (cur.uploadedAt || 0)) best.set(rid, p);
-  };
   for (const p of Object.values(album.photos)) {
     const rid = regionOfNode(album, p.box);
     const r = rid && regions.byId.get(rid);
-    if (!r) continue;
-    consider(rid, p);
-    if (r.parent) consider(r.parent, p);
+    if (!r || r.level !== 2) continue;
+    const cur = best.get(rid);
+    if (!cur || (p.uploadedAt || 0) < (cur.uploadedAt || 0)) best.set(rid, p);
   }
   return new Map([...best].map(([rid, p]) => [rid, p.id]));
 }

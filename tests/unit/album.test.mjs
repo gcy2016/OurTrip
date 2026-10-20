@@ -247,30 +247,26 @@ test('相册框：名称固定、只能放照片、不能有子框，复制模�
   assert.deepEqual(A.validateAlbum(a, R), []);
 });
 
-test('区域背景：用户照片与仓库图片谁后设置谁生效，失效时互相顶替，都没有时为 null', () => {
+test('省级区域背景：未点亮显示灰白代表照片，点亮后彩色；用户封面优先，清除后回到彩色代表照片；不自动取照片', () => {
   const a = A.emptyAlbum();
+  const img = 'images/provinces/x.jpg';
+  // 未点亮：灰白代表照片；没有代表照片时为纯色
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03', { provinceImage: img, lit: false }), { kind: 'image', src: img, grey: true });
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', { lit: false }), null);
+  // 点亮但没有设置封面：彩色代表照片，即使区域里有照片也不自动取
   const b = A.addBox(a, R, 'A03-C01');
   A.addPhotos(a, b.id, [photo('p1')]);
-  const at = (s) => Date.parse(s.replace(' ', 'T'));
-  assert.equal(A.resolveRegionBackground(a, R, 'A03', {}), null);
-  // 只有仓库图片
-  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03', { image: 'x.jpg' }), { kind: 'image', src: 'x.jpg', fallback: null });
-  // 用户之后选了照片 → 用户生效，仓库图片作为后备
-  A.setCover(a, R, 'A03', 'p1', at('2026-10-16 10:00'));
-  let r = A.resolveRegionBackground(a, R, 'A03', { image: 'x.jpg', imageUpdatedAt: '2026-10-15 10:00' });
-  assert.equal(r.kind, 'photo');
-  assert.equal(r.fallback.src, 'x.jpg');
-  // 维护者之后更新了仓库图片 → 仓库图片生效
-  r = A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg', imageUpdatedAt: '2026-10-17 10:00' });
-  assert.equal(r.kind, 'image');
-  assert.equal(r.fallback.photoId, 'p1');
-  // 用户再次设置 → 又由用户生效
-  A.setCover(a, R, 'A03', 'p1', at('2026-10-18 10:00'));
-  assert.equal(A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg', imageUpdatedAt: '2026-10-17 10:00' }).kind, 'photo');
-  // 用户照片失效 → 回到仓库图片；仓库也没有 → null（纯色）
-  A.deletePhoto(a, 'p1');
-  assert.equal(A.resolveRegionBackground(a, R, 'A03', { image: 'y.jpg' }).kind, 'image');
-  assert.equal(A.resolveRegionBackground(a, R, 'A03', {}), null);
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03', { provinceImage: img, autoPhoto: 'p1', lit: true }), { kind: 'image', src: img, grey: false });
+  // 用户设置封面：显示用户照片，代表照片作为加载失败时的后备
+  A.setCover(a, R, 'A03', 'p1');
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03', { provinceImage: img, lit: true }), { kind: 'photo', photoId: 'p1', fallback: { kind: 'image', src: img, grey: false } });
+  // 清除封面 → 回到彩色代表照片
+  A.clearCover(a, 'A03');
+  assert.equal(A.resolveRegionBackground(a, R, 'A03', { provinceImage: img, lit: true }).src, img);
+  // 没有二级区域的一级区域（A01）同样按省级规则
+  const c = A.addBox(a, R, 'A01');
+  A.addNote(a, c.id, '只有备注也会点亮');
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A01', { provinceImage: img, lit: true }), { kind: 'image', src: img, grey: false });
   // 旧数据（字符串形式的封面）仍可读取
   A.addPhotos(a, b.id, [photo('p2')]);
   a.regionCovers['A03-C01'] = 'p2';
@@ -436,26 +432,34 @@ test('区域排序：已点亮的在前（日期新到旧，同一天后点亮�
   assert.deepEqual(order, ['A04', 'A05', 'A02', 'A01', 'A03', 'A06']);
 });
 
-test('自动封面：已点亮区域没有生效封面时取区域内最早上传的照片；一级区域取下属全部照片；用户封面优先', () => {
+test('二级区域自动封面：没有用户封面时取区域内最早上传的照片；一级区域不自动取；用户封面优先', () => {
   const a = A.emptyAlbum();
   const b1 = A.addBox(a, R, 'A03-C01');
   const b2 = A.addBox(a, R, 'A03-C02');
+  const b3 = A.addBox(a, R, 'A01');
   A.addPhotos(a, b1.id, [{ ...photo('late'), uploadedAt: 300 }, { ...photo('mid'), uploadedAt: 200 }]);
   A.addPhotos(a, b2.id, [{ ...photo('early'), uploadedAt: 100 }]);
+  A.addPhotos(a, b3.id, [{ ...photo('a01'), uploadedAt: 50 }]);
   const auto = A.autoRegionCovers(a, R);
   assert.equal(auto.get('A03-C01'), 'mid');
   assert.equal(auto.get('A03-C02'), 'early');
-  assert.equal(auto.get('A03'), 'early');
-  assert.equal(auto.has('A04'), false);
-  // 没有用户封面、没有仓库图片 → 自动照片
-  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03-C01', {}, auto.get('A03-C01')), { kind: 'photo', photoId: 'mid' });
-  // 仓库图片优先于自动照片，自动照片作为后备
-  const r = A.resolveRegionBackground(a, R, 'A03-C01', { image: 'x.jpg' }, auto.get('A03-C01'));
-  assert.equal(r.src, 'x.jpg');
-  assert.equal(r.fallback.photoId, 'mid');
+  assert.equal(auto.has('A03'), false); // 一级区域不自动取
+  assert.equal(auto.has('A01'), false); // 没有二级区域的一级区域也按省级规则
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03-C01', { autoPhoto: auto.get('A03-C01'), lit: true }), { kind: 'photo', photoId: 'mid' });
+  // 二级区域没有代表照片
+  assert.equal(A.resolveRegionBackground(a, R, 'A03-C05', { provinceImage: 'x.jpg', lit: false }), null);
   // 用户主动设置的封面不会被自动照片替换
   A.setCover(a, R, 'A03-C01', 'late', 1000);
-  const u = A.resolveRegionBackground(a, R, 'A03-C01', {}, auto.get('A03-C01'));
+  const u = A.resolveRegionBackground(a, R, 'A03-C01', { autoPhoto: auto.get('A03-C01'), lit: true });
   assert.equal(u.photoId, 'late');
   assert.equal(u.fallback.photoId, 'mid');
+});
+
+test('省级代表照片按省名对应（不按区域编号）；与二级区域重名而加了“省”的也能对上', async () => {
+  const { provincePhoto, PROVINCE_PHOTOS } = await import('../../js/region-display.js');
+  assert.equal(PROVINCE_PHOTOS.length, 34);
+  assert.equal(provincePhoto('吉林省'), `images/provinces/${encodeURIComponent('吉林')}.jpg`);
+  assert.equal(provincePhoto('内蒙古'), `images/provinces/${encodeURIComponent('内蒙古')}.jpg`);
+  assert.equal(provincePhoto('A03'), null); // 名称没读到时显示编号，没有代表照片
+  assert.equal(provincePhoto(''), null);
 });

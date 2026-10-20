@@ -1,7 +1,7 @@
 // 旅行相册主程序：登录、在线人数、编辑权、页面路由与渲染。
 
 import { CONFIG } from './config.js';
-import { REGION_DISPLAY, COLORS } from './region-display.js';
+import { REGION_DISPLAY, COLORS, provincePhoto } from './region-display.js';
 import { buildRegions, isRegionId, isContentRegion } from './regions.js';
 import * as A from './album.js';
 import { encryptSecret, decryptSecret, decryptWithKey, blobFingerprint } from './crypto.js';
@@ -756,6 +756,7 @@ function backgroundImage(spec) {
   const load = (s) => {
     if (!s) return giveUp();
     img.onerror = () => load(s.fallback);
+    img.classList.toggle('grey', !!s.grey); // 未点亮省份的代表照片显示为灰白色
     if (s.kind === 'image') {
       img.onload = null;
       img.src = s.src;
@@ -836,7 +837,11 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
 function regionTile(id, { href, onclick } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
-  const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id], app.autoCovers.get(id));
+  const bg = A.resolveRegionBackground(album, app.regions, id, {
+    provinceImage: r.level === 1 ? provincePhoto(app.regionName(id)) : null,
+    autoPhoto: app.autoCovers.get(id),
+    lit: app.lit.has(id),
+  });
   let sub = '';
   if (r.children.length) {
     const litKids = r.children.filter((c) => app.lit.has(c)).length;
