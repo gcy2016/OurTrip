@@ -142,6 +142,26 @@ h1 {
   font-size: 22px;
 }
 
+/* 页面标题与方框名称统一用毛笔字（区域名称见下方“区域名称大字号”） */
+.brand,
+.page-head h1,
+.map-head h1,
+.tile-title {
+  font-family: 'MaShanZheng', 'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', serif;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.page-head h1 {
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+.page-head h1 .type-badge {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  letter-spacing: 0;
+}
+
 h2 {
   font-size: 16px;
 }
@@ -352,14 +372,15 @@ textarea.input {
 
 .brand {
   color: var(--text);
-  font-weight: 700;
-  font-size: 17px;
+  font-size: 24px;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .brand small {
   color: var(--warn);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+  font-size: 13px;
   font-weight: 500;
 }
 
@@ -576,8 +597,8 @@ textarea.input {
 
 .tile-title {
   overflow: hidden;
-  font-weight: 650;
-  font-size: 16px;
+  font-size: 22px;
+  line-height: 1.15;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1278,8 +1299,8 @@ textarea.input {
   transform: scale(0.985);
 }
 
-.entry-icon {
-  font-size: 20px;
+.icon {
+  flex: none;
 }
 
 /* 多条备注、地点 */

@@ -473,6 +473,25 @@ window.addEventListener('hashchange', () => {
 
 // ---------- 渲染 ----------
 
+const ICONS = {
+  menu: ['M4 7h16', 'M4 12h16', 'M4 17h16'],
+  map: ['M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z', 'M9 4v14', 'M15 6v14'],
+  timeline: ['M12 3v18', 'M14 7h5', 'M5 16h5', 'M12 5a2 2 0 1 0 0 4a2 2 0 1 0 0-4Z', 'M12 14a2 2 0 1 0 0 4a2 2 0 1 0 0-4Z'],
+};
+
+/** 线条图标（替代 emoji），颜色跟随文字 */
+function icon(name) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = document.createElementNS(NS, 'svg');
+  for (const [k, v] of Object.entries({ class: 'icon', viewBox: '0 0 24 24', width: 20, height: 20, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.8, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) el.setAttribute(k, v);
+  for (const d of ICONS[name]) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', d);
+    el.appendChild(p);
+  }
+  return el;
+}
+
 function renderNow() {
   clear(root);
   if (app.mode === 'boot') root.appendChild(h('div', { class: 'center-page' }, h('p', { class: 'muted' }, '加载中…')));
@@ -596,11 +615,12 @@ function mainView() {
 }
 
 function topBar() {
+  // 只读时不再单独显示“只读”标签：“开始编辑”按钮已经说明当前状态；别人正在编辑时仍然提示
   const lockChip = app.editing
     ? h('span', { class: 'chip-status editing' }, '编辑中')
     : app.lock.state === 'other'
       ? h('span', { class: 'chip-status other' }, `${app.lock.name} 正在编辑 · 只读`)
-      : h('span', { class: 'chip-status' }, '只读');
+      : null;
   const editBtn = app.editing
     ? h('button', { class: 'btn btn-small', onclick: (e) => stopEditing(e.currentTarget) }, '结束编辑')
     : h('button', { class: 'btn btn-small btn-primary', onclick: (e) => startEditing(e.currentTarget) }, '开始编辑');
@@ -608,7 +628,7 @@ function topBar() {
     'header',
     { class: 'topbar' },
     h('a', { class: 'brand', href: '#/' }, '旅行相册', demo ? h('small', null, ' 演示') : null),
-    h('div', { class: 'top-actions' }, saveChip(), lockChip, editBtn, h('button', { class: 'icon-btn', 'aria-label': '菜单', onclick: menu }, '☰'))
+    h('div', { class: 'top-actions' }, saveChip(), lockChip, editBtn, h('button', { class: 'icon-btn', 'aria-label': '菜单', onclick: menu }, icon('menu')))
   );
 }
 
@@ -846,9 +866,9 @@ function homeView() {
     h(
       'div',
       { class: 'entry-row' },
-      h('a', { class: 'entry-btn', href: '#/map' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🗺️'), '地图'),
+      h('a', { class: 'entry-btn', href: '#/map' }, icon('map'), '地图'),
       // 首页入口用回时间线（用户 2026-10-18 决定）；旅行树代码保留，#/tree 仍可直接打开，首页不放入口
-      h('a', { class: 'entry-btn', href: '#/timeline' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🕒'), '时间线')
+      h('a', { class: 'entry-btn', href: '#/timeline' }, icon('timeline'), '时间线')
     ),
     h('div', { class: 'grid' }, app.orderRegions(app.regions.level1).map((id) => regionTile(id)))
   );
@@ -1054,7 +1074,8 @@ function toolbar(id, kids, content, canKids) {
   return h(
     'div',
     { class: 'toolbar' },
-    h('button', { class: 'btn btn-primary btn-small', onclick: () => B.newBoxDialog(app, id) }, content ? '+ 新建子框' : '+ 新建框'),
+    // 每页只有一个实心主按钮：末级框里主按钮是“上传照片”，这里用浅色按钮
+    h('button', { class: `btn btn-small${isRegionId(id) || kids.length ? ' btn-primary' : ''}`, onclick: () => B.newBoxDialog(app, id) }, content ? '+ 新建子框' : '+ 新建框'),
     kids.length
       ? h(
           'button',
@@ -1306,7 +1327,7 @@ function locationsSection(node) {
             h(
               'div',
               { class: 'map-links' },
-              apple ? h('a', { class: 'btn btn-small btn-primary', href: apple, target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中打开') : null,
+              apple ? h('a', { class: 'btn btn-small', href: apple, target: '_blank', rel: 'noopener noreferrer' }, '在 Apple 地图中打开') : null,
               copyText(loc)
                 ? h(
                     'button',

@@ -131,6 +131,11 @@ try {
     assert.equal(await A.locator('.grid .tile').count(), 34);
     // 首页入口是时间线；旅行树没有首页入口，直接打开 #/tree 时，还没有点亮的区域只显示根基
     assert.equal(await A.locator('a.entry-btn:has-text("时间线")').count(), 1);
+    // 界面：入口与菜单用线条图标（不用 emoji）；只读时不显示“只读”标签；标题用毛笔字
+    assert.equal(await A.locator('a.entry-btn svg.icon').count(), 2);
+    assert.equal(await A.locator('button[aria-label="菜单"] svg.icon').count(), 1);
+    assert.equal(await A.locator('.chip-status:text-is("只读")').count(), 0);
+    assert.match(await A.$eval('.page-head h1', (e) => getComputedStyle(e).fontFamily), /MaShanZheng/);
     assert.equal(await A.locator('.entry-btn:has-text("旅行树")').count(), 0);
     await A.goto(`${BASE}#/tree`);
     await A.waitForSelector('.tree-root');
@@ -437,7 +442,7 @@ try {
     await A.goto(`${BASE}#/r/A03-C01`);
     await A.waitForSelector('.tile-title:text-is("2024 五一")');
     await tileMenu(A, '2024 五一', '背景颜色');
-    await A.click('.swatch[title="#fde2e4"]');
+    await A.click('.swatch[title="#ccfbf1"]');
     await A.click('.sheet-item:has-text("里的全部框")');
     await A.waitForSelector('.toast:has-text("个框的背景颜色")');
     let a = await album(A);
@@ -446,17 +451,17 @@ try {
       while (a.nodes[cur]) cur = a.nodes[cur].parent;
       return cur === 'A03-C01';
     };
-    assert.ok(Object.values(a.nodes).filter(inRegion).every((n) => n.color === '#fde2e4'));
-    assert.ok(Object.values(a.nodes).filter((n) => !inRegion(n)).every((n) => n.color !== '#fde2e4'));
-    assert.equal(a.colorDefaults.regions['A03-C01'], '#fde2e4');
+    assert.ok(Object.values(a.nodes).filter(inRegion).every((n) => n.color === '#ccfbf1'));
+    assert.ok(Object.values(a.nodes).filter((n) => !inRegion(n)).every((n) => n.color !== '#ccfbf1'));
+    assert.equal(a.colorDefaults.regions['A03-C01'], '#ccfbf1');
     await newBox(A, '颜色测试');
     a = await album(A);
-    assert.equal((await nodeByTitle(A, '颜色测试')).color, '#fde2e4');
+    assert.equal((await nodeByTitle(A, '颜色测试')).color, '#ccfbf1');
     await tileMenu(A, '颜色测试', '背景颜色');
     await A.click('.swatch[title="#dcfce7"]');
     await A.click('.sheet-item:has-text("仅当前框")');
     await A.waitForFunction(() => Object.values(window.__app.sync.album.nodes).find((n) => n.title === '颜色测试').color === '#dcfce7');
-    assert.equal((await nodeByTitle(A, '2024 五一')).color, '#fde2e4');
+    assert.equal((await nodeByTitle(A, '2024 五一')).color, '#ccfbf1');
     await tileMenu(A, '颜色测试', '删除');
     await A.click('.dialog button:text-is("删除")');
     assert.ok(await settle(A));
@@ -546,7 +551,7 @@ try {
   await step('编辑权释放后另一位可取得；查看方能看到最新内容', async () => {
     await A.click('button:text-is("结束编辑")');
     await A.waitForSelector('button:text-is("开始编辑")');
-    await B.click('button:text-is("☰")').catch(() => B.click('button[aria-label="菜单"]'));
+    await B.click('button[aria-label="菜单"]');
     await B.click('.sheet-item:has-text("刷新数据")');
     await B.waitForSelector('.tile-title:text-is("2024 五一假期")');
     await B.click('button:text-is("开始编辑")');

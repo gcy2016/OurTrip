@@ -22,9 +22,9 @@ export const COLORS = {
   box: '#eaf2ff', // 自定义框默认背景
 };
 
-// 自定义框可选背景色：明亮的浅色为主，另有几种鲜亮色（深色背景上自动改用白字）
+// 自定义框可选背景色：与蓝色主色系搭配的浅色为主（蓝、青、绿、灰，另有一种暖黄点缀），
+// 另有几种鲜亮色（深色背景上自动改用白字）。用户之前选过的颜色保存在相册数据里，不受这里影响。
 export const BOX_PALETTE = [
-  '#eaf2ff', '#dbeafe', '#ccfbf1', '#dcfce7', '#fef3c7', '#ffedd5',
-  '#fde2e4', '#fce7f3', '#ede9fe', '#e0f2fe',
-  '#60a5fa', '#34d399', '#fbbf24', '#fb7185', '#a78bfa', '#2f7cf6',
+  '#eaf2ff', '#dbeafe', '#e0f2fe', '#ccfbf1', '#dcfce7', '#eef2f7', '#fef3c7',
+  '#2f7cf6', '#0ea5e9', '#14b8a6', '#34d399', '#64748b',
 ];
