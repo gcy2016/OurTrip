@@ -172,7 +172,15 @@ export async function openUploader(app, boxId, fileList) {
       barEl = h('div', { class: 'progress-bar' });
       listEl = h('ul', { class: 'up-list' });
       footEl = buttons();
-      return h('div', null, summaryEl, h('div', { class: 'progress' }, barEl), listEl, footEl);
+      return h(
+        'div',
+        null,
+        h('p', { class: 'dialog-hint' }, '单批最多 50 张，上传前会自动压缩；首版不支持视频。'),
+        summaryEl,
+        h('div', { class: 'progress' }, barEl),
+        listEl,
+        footEl
+      );
     },
     { title: '上传照片', wide: true, dismissable: false }
   );

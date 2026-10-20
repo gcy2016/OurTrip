@@ -601,21 +601,6 @@ textarea.input {
   box-shadow: 0 0 0 2px var(--lit), var(--shadow-card);
 }
 
-.lit-mark {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--primary);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 18px;
-  box-shadow: 0 2px 6px rgba(47, 124, 246, 0.35);
-}
-
 .tile-badge {
   position: absolute;
   top: 10px;
@@ -1343,8 +1328,18 @@ textarea.input {
   overflow: hidden;
 }
 
-@media (orientation: portrait) {
-  .map-stage {
+/* 横屏查看：只在手机竖屏时生效（电脑窗口竖长时不旋转） */
+.map-rotate {
+  display: none;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  .map-rotate {
+    display: inline-flex;
+    pointer-events: auto;
+  }
+
+  .map-stage.landscape {
     width: 100vh;
     width: 100dvh;
     height: 100vw;
@@ -1409,7 +1404,15 @@ textarea.input {
 }
 
 .china-map .prov.lit {
-  fill: #5fc79a;
+  fill: url(#map-lit);
+}
+
+.china-map stop.lit-from {
+  stop-color: var(--lit-from);
+}
+
+.china-map stop.lit-to {
+  stop-color: var(--lit-to);
 }
 
 .china-map .prov.sel {
@@ -1449,7 +1452,15 @@ textarea.input {
   stroke: none;
 }
 
-.map-info .l2-open {
+.map-info .map-count {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-top: 6px;
   pointer-events: auto;
 }
@@ -1479,8 +1490,8 @@ textarea.input {
 }
 
 .china-map .inset.lit .isle {
-  fill: #2fbf7f;
-  stroke: #2fbf7f;
+  fill: var(--lit);
+  stroke: var(--lit);
 }
 
 .china-map .inset text {
@@ -1515,11 +1526,12 @@ textarea.input {
 }
 
 .china-map .marker.lit rect {
-  fill: #5fc79a;
+  fill: url(#map-lit);
+  stroke: var(--lit);
 }
 
 .china-map .marker.lit circle {
-  fill: #2fbf7f;
+  fill: var(--lit);
 }
 
 .china-map .marker.sel rect {
@@ -1545,11 +1557,12 @@ textarea.input {
 }
 
 .map-info .lit strong {
-  color: var(--ok);
+  color: var(--primary-strong);
 }
 
 .map-legend {
   display: flex;
+  align-items: center;
   gap: 16px;
   font-size: 13px;
   color: var(--text-secondary);
@@ -1567,7 +1580,8 @@ textarea.input {
 }
 
 .legend.lit::before {
-  background: #5fc79a;
+  background: linear-gradient(135deg, var(--lit-from), var(--lit-to));
+  box-shadow: 0 0 0 1px var(--lit);
 }
 
 /* =========================================================================
@@ -1638,6 +1652,29 @@ textarea.input {
   border-radius: 50%;
   background: var(--primary);
   box-shadow: 0 1px 4px rgba(47, 124, 246, 0.4);
+}
+
+/* 压缩的空白段（相邻日期相隔超过 3 个月）：轴改为虚线，中间注明相隔多久 */
+.tl-break {
+  position: absolute;
+  left: 50%;
+  width: 6px;
+  margin-left: -3px;
+  background: repeating-linear-gradient(var(--bg) 0 6px, transparent 6px 14px);
+}
+
+.tl-gap {
+  position: absolute;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
 .tl-link {
@@ -1895,7 +1932,6 @@ textarea.input {
 }
 
 .tree-box .tile-text,
-.tree-box .lit-mark,
 .tree-box .tile.has-photo::after {
   display: none;
 }

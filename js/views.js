@@ -47,13 +47,71 @@ function regionInfo(app, sel) {
   const lit = app.lit.has(sel);
   const date = lit ? app.litDate(sel) : null;
   const r = app.regions.byId.get(sel);
-  // 已点亮、有二级区域且已上传二级地图的省份：可以展开二级地图（提示内容不变）
-  const canOpen = lit && r && r.level === 1 && r.children.length > 0 && l2Index.has(sel);
+  // 有二级区域的一级区域：显示下属点亮计数（与首页方框一致）
+  const kids = r && r.level === 1 && r.children.length ? r.children : null;
+  // 已点亮、有二级区域且已上传二级地图的省份：可以展开二级地图
+  const canOpen = lit && kids && l2Index.has(sel);
   return h(
     'div',
     { class: 'map-info', role: 'status' },
     h('p', { class: lit ? 'lit' : '' }, h('strong', null, app.regionName(sel)), `　${lit ? (date ? `${dotted(date)} 点亮` : '已点亮') : '未点亮'}`),
-    canOpen ? h('a', { class: 'btn btn-small btn-primary l2-open', href: `#/map/${sel}` }, '查看二级地图') : null
+    kids ? h('p', { class: 'map-count' }, `已点亮 ${kids.filter((c) => app.lit.has(c)).length}/${kids.length} 个二级区域`) : null,
+    // 已点亮的区域可以进入主页中对应的区域页面；未点亮的没有内容，不提供
+    lit
+      ? h(
+          'div',
+          { class: 'map-actions' },
+          canOpen ? h('a', { class: 'btn btn-small btn-primary l2-open', href: `#/map/${sel}` }, '查看二级地图') : null,
+          h('a', { class: 'btn btn-small btn-primary album-open', href: `#/r/${sel}` }, '查看相册')
+        )
+      : null
+  );
+}
+
+// ---------- 横屏查看（手机竖屏时可选，记在本设备上） ----------
+
+const LS_LANDSCAPE = 'travel-album-map-landscape';
+
+function landscapeOn() {
+  try {
+    return localStorage.getItem(LS_LANDSCAPE) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function toggleLandscape(app) {
+  try {
+    if (landscapeOn()) localStorage.removeItem(LS_LANDSCAPE);
+    else localStorage.setItem(LS_LANDSCAPE, '1');
+  } catch {
+    /* 记不住也不影响切换本次显示 */
+  }
+  app.render();
+}
+
+/** 地图页外壳：横屏查看时整页旋转 90° */
+function mapStage(head, body) {
+  return h('section', { class: `map-stage${landscapeOn() ? ' landscape' : ''}` }, head, body);
+}
+
+/** 左下角：图例，以及“横屏查看 / 竖屏查看”切换（只在手机竖屏时显示，见 css 中的 .map-rotate） */
+function mapLegend(app) {
+  return h(
+    'div',
+    { class: 'map-legend' },
+    h('span', { class: 'legend lit' }, '已点亮'),
+    h('span', { class: 'legend' }, '未点亮'),
+    h('button', { class: 'btn btn-small map-rotate', onclick: () => toggleLandscape(app) }, landscapeOn() ? '竖屏查看' : '横屏查看')
+  );
+}
+
+/** 点亮区域的填充：与首页点亮方框相同的渐变（颜色取 css 变量） */
+function litDefs() {
+  return svg(
+    'defs',
+    null,
+    svg('linearGradient', { id: 'map-lit', x1: 0, y1: 0, x2: 1, y2: 1 }, svg('stop', { offset: 0, class: 'lit-from' }), svg('stop', { offset: 1, class: 'lit-to' }))
   );
 }
 
@@ -121,7 +179,7 @@ function drawMap(app, data) {
   const vw = box.w + pad * 2;
   const vh = box.h + pad * 2;
   const dots = smallRegions(data, vw);
-  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map', role: 'img', 'aria-label': '已点亮区域地图' });
+  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map', role: 'img', 'aria-label': '已点亮区域地图' }, litDefs());
   const pick = (id) => {
     selected = id;
     app.render();
@@ -239,12 +297,12 @@ export function mapView(app, l1Id = null) {
         'div',
         { class: 'map-side' },
         regionInfo(app, selected),
-        h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
+        mapLegend(app)
       )
     );
   }
-  // 横向展示：竖屏时整页旋转 90°，不依赖锁定屏幕方向，也不提示用户旋转手机
-  return h('section', { class: 'map-stage' }, head, body);
+  // 手机竖屏时默认正常显示，可切换“横屏查看”；不锁定屏幕方向，也不提示用户旋转手机
+  return mapStage(head, body);
 }
 
 // ---------- 二级地图（点亮的省份展开） ----------
@@ -264,7 +322,7 @@ async function loadL2(app, l1Id) {
 
 function drawL2(app, data, dateInMap) {
   const [vx, vy, vw, vh] = data.viewBox;
-  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map l2-map', role: 'img', 'aria-label': '二级区域地图' });
+  const root = svg('svg', { viewBox: `${vx} ${vy} ${vw} ${vh}`, class: 'china-map l2-map', role: 'img', 'aria-label': '二级区域地图' }, litDefs());
   const pick = (id) => {
     selected2 = id;
     app.render();
@@ -326,11 +384,11 @@ function l2View(app, l1Id) {
         'div',
         { class: 'map-side' },
         regionInfo(app, selected2),
-        h('div', { class: 'map-legend' }, h('span', { class: 'legend lit' }, '已点亮'), h('span', { class: 'legend' }, '未点亮'))
+        mapLegend(app)
       )
     );
   }
-  return h('section', { class: 'map-stage' }, head, body);
+  return mapStage(head, body);
 }
 
 /** 退出登录或换账号时清空缓存的地图 */
@@ -353,23 +411,81 @@ function dayNumber(date) {
   return Math.round(Date.UTC(y, m - 1, d) / DAY_MS);
 }
 
+/** 两个日期（YYYY-MM-DD，older ≤ newer）之间相隔的整月数 */
+export function monthsBetween(older, newer) {
+  const [y1, m1, d1] = older.split('-').map(Number);
+  const [y2, m2, d2] = newer.split('-').map(Number);
+  return (y2 - y1) * 12 + (m2 - m1) - (d2 < d1 ? 1 : 0);
+}
+
+/** 间隔超过 3 个月的空白段压缩（子功能 PRD 3.2）：older 加 3 个月仍早于 newer */
+export const COMPRESS_MONTHS = 3;
+export function isLongGap(older, newer) {
+  const [y, m, d] = older.split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + COMPRESS_MONTHS, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  return dayNumber(newer) > Math.round(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), Math.min(d, last)) / DAY_MS);
+}
+
+/** 压缩段里留给“此间 X 个月无新足迹”的空白高度；压缩段总长 = 方框高度 + 这段空白（具体数值待《界面显示规范》） */
+const GAP_BAND = 64;
+
 /**
- * 时间线布局（纯计算）：items 按从上到下的顺序给出（最新的在最上面），点在轴上的位置与真实时间成比例；
- * 卡片左右交替，同侧放不下时顺延到下方（用引线连到实际日期），同一天的多个区域依次排列。
+ * 时间线布局（纯计算）：items 按从上到下的顺序给出（最新的在最上面）。
+ * - 相邻日期间隔不超过 3 个月：点在轴上的距离与真实时间成比例；
+ * - 超过 3 个月：这段空白压缩成固定长度（breaks），段内不画月份刻度；
+ * - 卡片左右交替，同侧放不下时顺延到下方（用引线连到实际日期），同一天的多个区域依次排列。
+ * 返回 { items, height, ticks: [{y, month, year}], breaks: [{y1, y2, bandY, months}] }
  */
 export function layoutTimeline(items, { cardH, gap = 10, top = 24 }) {
-  if (!items.length) return { items: [], height: 0, startDay: 0 };
-  const startDay = dayNumber(items[0].date);
+  if (!items.length) return { items: [], height: 0, ticks: [], breaks: [] };
   const bottom = [top - gap, top - gap];
+  const breaks = [];
+  // 按比例的区段：从 fromDay（较新）到 toDay（较旧），fromDay 位于 y，往下每天 PX_PER_DAY
+  const segments = [{ fromDay: dayNumber(items[0].date), toDay: dayNumber(items[0].date), y: top }];
+  let prev = null;
   const out = items.map((it, i) => {
-    const y = top + Math.abs(startDay - dayNumber(it.date)) * PX_PER_DAY;
+    const day = dayNumber(it.date);
+    let y = top;
+    if (prev) {
+      y = prev.y;
+      if (it.date !== prev.date && isLongGap(it.date, prev.date)) {
+        // 压缩段：固定长度；只有上方卡片异常拥挤时才顺延，保证“此间…”文字不压在卡片上
+        const bandTop = Math.max(prev.y + cardH / 2, ...bottom) + gap;
+        y = Math.max(prev.y + cardH + GAP_BAND, bandTop + GAP_BAND + cardH / 2);
+        breaks.push({ y1: prev.y, y2: y, bandY: (bandTop - gap + y - cardH / 2) / 2, months: monthsBetween(it.date, prev.date) });
+        segments.push({ fromDay: day, toDay: day, y });
+      } else {
+        const seg = segments[segments.length - 1];
+        y = seg.y + (seg.fromDay - day) * PX_PER_DAY;
+        seg.toDay = day;
+      }
+    }
     const side = i % 2;
     const cardY = Math.max(y - cardH / 2, bottom[side] + gap, top);
     bottom[side] = cardY + cardH;
-    return { ...it, y, side, cardY };
+    prev = { ...it, y, side, cardY };
+    return prev;
   });
+
+  // 月份刻度（从最新往前），只画在按比例的区段内；1 月标出年份
+  const ticks = [];
+  for (const seg of segments) {
+    const d = new Date(seg.fromDay * DAY_MS);
+    for (let yy = d.getUTCFullYear(), m = d.getUTCMonth() + 1; ; m--) {
+      if (m < 1) {
+        m = 12;
+        yy--;
+      }
+      const day = Math.round(Date.UTC(yy, m - 1, 1) / DAY_MS);
+      if (day < seg.toDay) break;
+      ticks.push({ y: seg.y + (seg.fromDay - day) * PX_PER_DAY, month: m, year: yy });
+    }
+  }
   const height = Math.max(...bottom, out[out.length - 1].y) + top;
-  return { items: out, height, startDay };
+  // 与日期圆点重合的月份刻度不画，否则文字被圆点挡住；标年份的 1 月刻度保留
+  const clear = ticks.filter((t) => t.month === 1 || !out.some((o) => Math.abs(o.y - t.y) < 12));
+  return { items: out, height, ticks: clear, breaks };
 }
 
 export function timelineView(app) {
@@ -384,22 +500,19 @@ export function timelineView(app) {
 
   const width = Math.min(document.documentElement.clientWidth || 360, 1200) - 40;
   const cardW = Math.max(96, Math.min(150, Math.floor(width / 2 - 34)));
-  const { items: laid, height, startDay } = layoutTimeline(items, { cardH: cardW });
+  const { items: laid, height, ticks, breaks } = layoutTimeline(items, { cardH: cardW });
   const box = h('div', { class: 'timeline', style: { height: `${Math.ceil(height)}px`, '--tl-card': `${cardW}px` } });
   box.appendChild(h('div', { class: 'tl-axis' }));
 
-  // 月份刻度（从最新往前）；1 月标出年份
-  const last = laid[laid.length - 1];
-  const [y0, m0] = items[0].date.split('-').map(Number);
-  for (let y = y0, m = m0; ; m--) {
-    if (m < 1) {
-      m = 12;
-      y--;
-    }
-    const day = Math.round(Date.UTC(y, m - 1, 1) / DAY_MS);
-    const top = 24 + (startDay - day) * PX_PER_DAY;
-    if (top > last.y + 1) break;
-    if (top >= 24 - 1) box.appendChild(h('div', { class: `tl-tick${m === 1 ? ' year' : ''}`, style: { top: `${top}px` } }, h('span', null, m === 1 ? `${y}年` : `${m}月`)));
+  // 月份刻度（从最新往前）；1 月标出年份；压缩段内不画
+  for (const t of ticks) {
+    const year = t.month === 1;
+    box.appendChild(h('div', { class: `tl-tick${year ? ' year' : ''}`, style: { top: `${t.y}px` } }, h('span', null, year ? `${t.year}年` : `${t.month}月`)));
+  }
+  // 压缩的空白段：轴改为虚线，中间注明相隔多久
+  for (const b of breaks) {
+    box.appendChild(h('div', { class: 'tl-break', style: { top: `${b.y1}px`, height: `${b.y2 - b.y1}px` } }));
+    box.appendChild(h('div', { class: 'tl-gap', style: { top: `${b.bandY}px` } }, `此间 ${b.months} 个月无新足迹`));
   }
 
   for (const it of laid) {

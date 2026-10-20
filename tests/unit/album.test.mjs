@@ -371,18 +371,91 @@ test('点亮日期：首次点亮记操作日期，旧数据取最早上传日�
   assert.deepEqual(a.regionLit['A03-C02'], { date: '2026-10-30', manual: true, at: day('2026-11-01') });
 });
 
-test('时间线布局（倒序）：最新在上，位置与时间成比例，同侧放不下顺延，同一天依次排列', async () => {
+test('时间线布局（倒序）：最新在上，3 个月内位置与时间成比例，同侧放不下顺延，同一天依次排列', async () => {
   const { layoutTimeline, PX_PER_MONTH } = await import('../../js/views.js');
   const items = [
-    { id: 'a', date: '2025-01-01' },
-    { id: 'b', date: '2025-01-01' },
-    { id: 'c', date: '2025-01-01' },
-    { id: 'd', date: '2024-01-01' },
+    { id: 'a', date: '2025-04-01' },
+    { id: 'b', date: '2025-04-01' },
+    { id: 'c', date: '2025-04-01' },
+    { id: 'd', date: '2025-01-01' },
   ];
-  const { items: out, height } = layoutTimeline(items, { cardH: 100 });
+  const { items: out, height, breaks, ticks } = layoutTimeline(items, { cardH: 100 });
   assert.equal(out[0].y, out[1].y);
-  assert.ok(Math.abs(out[3].y - out[0].y - 12 * PX_PER_MONTH) < 15);
+  assert.ok(Math.abs(out[3].y - out[0].y - 3 * PX_PER_MONTH) < 10); // 正好 3 个月：不压缩
+  assert.equal(breaks.length, 0);
   assert.deepEqual(out.map((x) => x.side), [0, 1, 0, 1]);
   assert.ok(out[2].cardY >= out[0].cardY + 100); // 同侧不重叠
   assert.ok(height >= out[3].cardY + 100);
+  // 月份刻度：3、2、1 月（4 月 1 日与圆点重合，不画）；1 月标年份，即使与圆点重合也保留
+  assert.deepEqual(ticks.map((t) => t.month), [3, 2, 1]);
+  assert.equal(ticks[2].year, 2025);
+});
+
+test('时间线：相邻日期间隔超过 3 个月时压缩为固定长度，标注相隔月数，段内不画刻度', async () => {
+  const { layoutTimeline, monthsBetween, PX_PER_MONTH } = await import('../../js/views.js');
+  assert.equal(monthsBetween('2023-05-01', '2026-10-20'), 41);
+  assert.equal(monthsBetween('2025-01-20', '2025-04-19'), 2);
+  const items = [
+    { id: 'a', date: '2026-10-20' },
+    { id: 'b', date: '2026-08-01' }, // 不到 3 个月：按比例
+    { id: 'c', date: '2023-05-01' }, // 3 年多：压缩
+    { id: 'd', date: '2023-02-01' }, // 正好 3 个月：不压缩
+    { id: 'e', date: '2022-10-30' }, // 超过 3 个月（多 2 天）：压缩
+  ];
+  const { items: out, breaks, ticks } = layoutTimeline(items, { cardH: 100 });
+  assert.equal(breaks.length, 2);
+  assert.equal(breaks[0].months, 39);
+  assert.equal(breaks[1].months, 3);
+  // 两段压缩长度相同（固定长度），远小于按比例的长度
+  const len0 = out[2].y - out[1].y;
+  const len1 = out[4].y - out[3].y;
+  assert.equal(len0, len1);
+  assert.ok(len0 < 3 * PX_PER_MONTH);
+  // 未压缩的部分仍成比例
+  assert.ok(Math.abs(out[3].y - out[2].y - (89 / 30.44) * PX_PER_MONTH) < 1);
+  // 压缩段内没有月份刻度；“此间”文字在两张卡片之间，不压在卡片上
+  for (const b of breaks) {
+    assert.ok(!ticks.some((t) => t.y > b.y1 + 1 && t.y < b.y2 - 1));
+    const above = out.filter((o) => o.y <= b.y1).map((o) => o.cardY + 100);
+    const below = out.filter((o) => o.y >= b.y2).map((o) => o.cardY);
+    assert.ok(Math.max(...above) < b.bandY - 10 && Math.min(...below) > b.bandY + 10);
+  }
+  // 区段内的刻度：2026 年 10、9 月；2023 年 4、3 月。8 月 1 日、5 月 1 日、2 月 1 日与圆点重合，不画；
+  // 2022-10-30 之后的 11 月在压缩段内，不画
+  assert.deepEqual(ticks.map((t) => `${t.year}-${t.month}`), ['2026-10', '2026-9', '2023-4', '2023-3']);
+});
+
+test('区域排序：已点亮的在前（日期新到旧，同一天后点亮的在前），未点亮的按映射顺序在后', () => {
+  const ids = ['A01', 'A02', 'A03', 'A04', 'A05', 'A06'];
+  const lit = { A02: ['2024-05-01', 1], A04: ['2025-01-01', 5], A05: ['2024-05-01', 9] };
+  const order = A.orderRegions(ids, {
+    isLit: (id) => !!lit[id],
+    date: (id) => (lit[id] ? lit[id][0] : null),
+    at: (id) => (lit[id] ? lit[id][1] : 0),
+  });
+  assert.deepEqual(order, ['A04', 'A05', 'A02', 'A01', 'A03', 'A06']);
+});
+
+test('自动封面：已点亮区域没有生效封面时取区域内最早上传的照片；一级区域取下属全部照片；用户封面优先', () => {
+  const a = A.emptyAlbum();
+  const b1 = A.addBox(a, R, 'A03-C01');
+  const b2 = A.addBox(a, R, 'A03-C02');
+  A.addPhotos(a, b1.id, [{ ...photo('late'), uploadedAt: 300 }, { ...photo('mid'), uploadedAt: 200 }]);
+  A.addPhotos(a, b2.id, [{ ...photo('early'), uploadedAt: 100 }]);
+  const auto = A.autoRegionCovers(a, R);
+  assert.equal(auto.get('A03-C01'), 'mid');
+  assert.equal(auto.get('A03-C02'), 'early');
+  assert.equal(auto.get('A03'), 'early');
+  assert.equal(auto.has('A04'), false);
+  // 没有用户封面、没有仓库图片 → 自动照片
+  assert.deepEqual(A.resolveRegionBackground(a, R, 'A03-C01', {}, auto.get('A03-C01')), { kind: 'photo', photoId: 'mid' });
+  // 仓库图片优先于自动照片，自动照片作为后备
+  const r = A.resolveRegionBackground(a, R, 'A03-C01', { image: 'x.jpg' }, auto.get('A03-C01'));
+  assert.equal(r.src, 'x.jpg');
+  assert.equal(r.fallback.photoId, 'mid');
+  // 用户主动设置的封面不会被自动照片替换
+  A.setCover(a, R, 'A03-C01', 'late', 1000);
+  const u = A.resolveRegionBackground(a, R, 'A03-C01', {}, auto.get('A03-C01'));
+  assert.equal(u.photoId, 'late');
+  assert.equal(u.fallback.photoId, 'mid');
 });

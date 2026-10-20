@@ -170,6 +170,9 @@ try {
     }, null, { timeout: 30000 });
     assert.ok(await A.isVisible('.up-failed:has-text("首版不支持视频")'));
     assert.equal(await A.locator('.up-failed button:text("重试")').count(), 0);
+    // 上传说明只在上传面板里显示，不在页面上常驻
+    assert.ok(await A.isVisible('.dialog .dialog-hint:has-text("单批最多 50 张")'));
+    assert.equal(await A.locator('.content :text("单批最多 50 张")').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'upload.png') });
     await A.click('.dialog button:text-is("关闭")');
     const a = await album(A);
@@ -196,6 +199,19 @@ try {
   await step('点亮：上传后二级区域及其一级区域自动点亮', async () => {
     const lit = await A.evaluate(() => [...window.__app.lit]);
     assert.deepEqual(lit.sort(), ['A03', 'A03-C01']);
+    // 首页：已点亮的排在最前；没有设置封面时自动显示区域内的照片；不再单独显示“已点亮”标签
+    await A.goto(`${BASE}#/`);
+    await A.waitForSelector('.grid .tile.lit.has-photo');
+    assert.equal(await A.textContent('.grid .tile:first-child .tile-title'), 'A03');
+    assert.equal(await A.textContent('.grid .tile:nth-child(2) .tile-title'), 'A01');
+    assert.equal(await A.locator('.grid .tile.has-photo').count(), 1);
+    assert.equal(await A.locator('.tile :text-is("已点亮")').count(), 0);
+    await A.goto(`${BASE}#/r/A03`);
+    await A.waitForSelector('.grid .tile.lit.has-photo');
+    assert.equal(await A.textContent('.grid .tile:first-child .tile-title'), 'A03-C01');
+    await A.goto(`${BASE}#/r/A03-C01`);
+    await A.click('.tile-title:text-is("相册")');
+    await A.waitForSelector('.photo-grid');
   });
 
   await step('大图、查看属性（有/无 EXIF）、编辑说明、设为封面', async () => {
@@ -506,6 +522,13 @@ try {
     assert.match(await B.textContent('.banner'), /正在编辑，你当前只能查看/);
     assert.equal(await B.locator('.toolbar').count(), 0);
     assert.equal(await B.locator('.tile-menu').count(), 0);
+    // 只读：只有照片的普通框不显示“备注”“地点”栏目，也没有“暂无备注 / 暂无地点”
+    await B.click('.tile:has(.tile-badge:text-is("相册")) .tile-title');
+    await B.waitForSelector('.photo-grid');
+    assert.equal(await B.locator('.section-head h2:has-text("备注"), .section-head h2:has-text("地点")').count(), 0);
+    assert.equal(await B.locator('text=暂无备注').count() + (await B.locator('text=暂无地点').count()), 0);
+    await B.goto(`${BASE}#/r/A03-C01`);
+    await B.waitForSelector('.tile');
     await B.click('button:text-is("开始编辑")');
     await B.waitForSelector('.dialog:has-text("编辑权已被占用")');
     await B.click('.dialog button:text-is("知道了")');
@@ -741,6 +764,10 @@ try {
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零三")');
     assert.equal(await A.textContent('.map-info p'), '虚零三　2023.05.01 点亮');
+    // 有二级区域的一级区域显示下属点亮计数；已点亮的可以“查看相册”
+    const a03 = await A.evaluate(() => window.__app.regions.byId.get('A03').children.filter((c) => window.__app.lit.has(c)).length);
+    assert.equal(await A.textContent('.map-info .map-count'), `已点亮 ${a03}/11 个二级区域`);
+    assert.equal(await A.getAttribute('.map-info .album-open', 'href'), '#/r/A03');
     // 位置：台湾 < 港澳标注 < 南海诸岛小框；引线不穿过台湾
     assert.equal(await A.locator('svg.china-map .inset .isle').count(), 2);
     const bb = (e) => {
@@ -772,7 +799,7 @@ try {
     // 台湾：普通区域，直接点击
     await A.click('svg.china-map path.prov[data-id="A09"]', { force: true });
     await A.waitForSelector('.map-info:has-text("台湾")');
-    assert.equal(await A.textContent('.map-info'), '台湾　未点亮');
+    assert.equal(await A.textContent('.map-info'), '台湾　未点亮'); // 无二级区域：没有计数；未点亮：没有“查看相册”
     // 港澳：点标注，显示该地区的名称与点亮日期/未点亮，亮暗跟随首页
     for (const id of ['A01', 'A02']) {
       await A.click(`svg.china-map .marker[data-id="${id}"] rect`, { force: true });
@@ -781,8 +808,10 @@ try {
         const d = app.lit.has(i) ? app.litDate(i) : null;
         return { text: `${app.regionName(i)}　${app.lit.has(i) ? `${d.replace(/-/g, '.')} 点亮` : '未点亮'}`, lit: app.lit.has(i) };
       }, id);
-      await A.waitForFunction((t) => document.querySelector('.map-info').textContent === t, expect.text);
+      await A.waitForFunction((t) => document.querySelector('.map-info p')?.textContent === t, expect.text);
       assert.equal(await A.$eval(`svg.china-map .marker[data-id="${id}"]`, (e) => e.classList.contains('lit')), expect.lit);
+      assert.equal(await A.locator('.map-info .album-open').count(), expect.lit ? 1 : 0);
+      assert.equal(await A.locator('.map-info .map-count').count(), 0);
     }
     assert.equal(await A.locator('.toolbar, button:text-is("修改点亮时间")').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'map.png'), fullPage: true });
@@ -799,6 +828,8 @@ try {
     await A.click('svg.china-map path.prov[data-id="A04"]', { force: true });
     await A.waitForSelector('.map-info:has-text("虚零四")');
     assert.equal(await A.locator('.l2-open').count(), 0);
+    assert.equal(await A.locator('.album-open').count(), 0);
+    assert.match(await A.textContent('.map-info .map-count'), /^已点亮 0\/\d+ 个二级区域$/);
     // 已点亮且有二级地图（A03）：提示内容不变，另有“查看二级地图”
     await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
     await A.waitForSelector('.l2-open');
@@ -814,12 +845,19 @@ try {
     const expectLit = await A.evaluate(() => window.__app.regions.byId.get('A03').children.filter((c) => window.__app.lit.has(c)));
     assert.deepEqual(litIds.sort(), expectLit.sort());
     await A.click('.l2-map path.prov[data-id="A03-C01"]', { force: true });
-    await A.waitForFunction(() => document.querySelector('.map-info').textContent === '零三零一　2023.05.01 点亮');
+    await A.waitForFunction(() => document.querySelector('.map-info p')?.textContent === '零三零一　2023.05.01 点亮');
+    assert.equal(await A.locator('.map-info .map-count').count(), 0); // 二级区域不显示计数
+    assert.equal(await A.getAttribute('.map-info .album-open', 'href'), '#/r/A03-C01');
     await A.click('.l2-map path.prov[data-id="A03-C05"]', { force: true });
     await A.waitForFunction(() => document.querySelector('.map-info').textContent === '零三零五　未点亮');
+    assert.equal(await A.locator('.album-open').count(), 0);
     await A.screenshot({ path: join(SHOTS, 'map-l2.png') });
     await A.click('.map-head a:has-text("全国")');
     await A.waitForSelector('svg.china-map:not(.l2-map) path.prov');
+    // “查看相册”进入主页中该区域的页面
+    await A.click('svg.china-map path.prov[data-id="A03"]', { force: true });
+    await A.click('.map-info .album-open');
+    await A.waitForSelector('.page-head h1:text-is("虚零三")');
   });
 
   await step('时间线页：按点亮日期排列，距离与时间成比例，复用区域方框显示名称和日期', async () => {
@@ -840,10 +878,22 @@ try {
     const dates = cards.map((c) => c.date);
     assert.deepEqual(dates, [...dates].sort().reverse());
     const dots = await A.$$eval('.tl-dot', (els) => els.map((e) => parseFloat(e.style.top)));
-    // 相邻两个日期之间约每月 180px
-    const n = dates.length;
-    const months = await A.evaluate((d) => (Date.parse(d[0]) - Date.parse(d[1])) / (30.44 * 86400000), [dates[n - 2], dates[n - 1]]);
-    assert.ok(Math.abs(dots[n - 1] - dots[n - 2] - months * 180) < 3, `${dots[n - 1] - dots[n - 2]} vs ${months * 180}`);
+    // 相邻日期间隔不超过 3 个月：每月 180px；超过 3 个月：压缩为固定长度，并注明相隔月数
+    const views = await import('../../js/views.js');
+    let compressed = 0;
+    for (let i = 1; i < dates.length; i++) {
+      if (dates[i] === dates[i - 1]) continue;
+      const months = (Date.parse(dates[i - 1]) - Date.parse(dates[i])) / (30.44 * 86400000);
+      const whole = views.monthsBetween(dates[i], dates[i - 1]);
+      if (!views.isLongGap(dates[i], dates[i - 1])) assert.ok(Math.abs(dots[i] - dots[i - 1] - months * 180) < 3, `${dots[i] - dots[i - 1]} vs ${months * 180}`);
+      else {
+        compressed++;
+        assert.ok(dots[i] - dots[i - 1] < months * 180);
+        assert.ok(await A.isVisible(`.tl-gap:text-is("此间 ${whole} 个月无新足迹")`));
+      }
+    }
+    assert.ok(compressed >= 1); // 测试数据里 2023 年与 2026 年之间有一段长空白
+    assert.equal(await A.locator('.tl-gap').count(), compressed);
     assert.ok(cards[0].top < 60); // 打开页面直接看到最新的
     assert.match(await A.textContent('.tl-card[data-id="A03-C01"] .tile-date'), /2023\.05\.01 点亮/);
     await A.screenshot({ path: join(SHOTS, 'timeline.png'), fullPage: true });
@@ -855,14 +905,36 @@ try {
     await A.goto(`${BASE}#/map`);
     await A.waitForSelector('svg.china-map path.prov');
     assert.equal(await A.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-    // 竖屏：整页旋转 90° 横向展示，地图铺满屏幕
-    const r = await A.evaluate(() => {
-      const b = document.querySelector('svg.china-map').getBoundingClientRect();
-      return { w: b.width, h: b.height, t: getComputedStyle(document.querySelector('.map-stage')).transform };
-    });
-    assert.notEqual(r.t, 'none');
-    assert.ok(r.h > 600 && r.w > 300, JSON.stringify(r));
+    // 竖屏默认正常显示；电脑（非触屏）上不显示“横屏查看”
+    const stage = () =>
+      A.evaluate(() => {
+        const b = document.querySelector('svg.china-map g.provinces').getBoundingClientRect(); // 实际画出的地图
+        return { w: b.width, h: b.height, t: getComputedStyle(document.querySelector('.map-stage')).transform };
+      });
+    assert.equal((await stage()).t, 'none');
+    assert.equal(await A.isVisible('.map-rotate'), false);
     await A.screenshot({ path: join(SHOTS, 'm-map.png') });
+    // 手机（触屏）竖屏：可切换“横屏查看”，整页旋转 90°、地图放大；再点切回；选择记在本设备
+    const cdp = await A.context().newCDPSession(A);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await A.goto(`${BASE}#/map`);
+    await A.waitForSelector('svg.china-map path.prov');
+    await A.waitForSelector('.map-rotate:text-is("横屏查看")');
+    const before = await stage();
+    await A.click('.map-rotate');
+    await A.waitForSelector('.map-rotate:text-is("竖屏查看")');
+    const r = await stage();
+    assert.notEqual(r.t, 'none');
+    assert.ok(Math.max(r.w, r.h) > Math.max(before.w, before.h) * 1.2, JSON.stringify([before, r])); // 旋转后地图明显放大
+    await A.screenshot({ path: join(SHOTS, 'm-map-landscape.png') });
+    await A.reload();
+    await A.waitForSelector('.map-rotate:text-is("竖屏查看")'); // 刷新后沿用
+    await A.click('.map-rotate');
+    await A.waitForSelector('.map-rotate:text-is("横屏查看")');
+    assert.equal((await stage()).t, 'none');
+    await A.screenshot({ path: join(SHOTS, 'm-map-portrait.png') });
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await cdp.detach();
     await A.goto(`${BASE}#/`);
     await A.waitForSelector('.grid .tile');
     // 区域名称大字号：不超过方框高度的 1/4，最多两行

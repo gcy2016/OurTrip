@@ -569,15 +569,56 @@ export function resolveCover(album, regions, targetId) {
  * 生效的一方失效（照片被删/移走、没有配置图片）时用另一方；两者都没有时返回 null，由页面显示纯色。
  * display：仓库配置 { image, imageUpdatedAt }，imageUpdatedAt 为日期字符串（如 '2026-10-15 20:00'）。
  */
-export function resolveRegionBackground(album, regions, regionId, display = {}) {
+export function resolveRegionBackground(album, regions, regionId, display = {}, autoPhoto = null) {
   const c = album.regionCovers[regionId];
   const photo = resolveCover(album, regions, regionId);
   const userAt = photo ? (typeof c === 'object' && c && Number(c.at)) || 0 : -1;
   const image = display && display.image ? String(display.image) : null;
   const codeAt = image ? Date.parse(String(display.imageUpdatedAt || '').replace(' ', 'T')) || 0 : -1;
-  if (photo && (!image || userAt >= codeAt)) return { kind: 'photo', photoId: photo, fallback: image ? { kind: 'image', src: image } : null };
-  if (image) return { kind: 'image', src: image, fallback: photo ? { kind: 'photo', photoId: photo } : null };
-  return null;
+  const auto = autoPhoto ? { kind: 'photo', photoId: autoPhoto } : null;
+  if (photo && (!image || userAt >= codeAt)) return { kind: 'photo', photoId: photo, fallback: image ? { kind: 'image', src: image, fallback: auto } : auto };
+  if (image) return { kind: 'image', src: image, fallback: photo ? { kind: 'photo', photoId: photo, fallback: auto } : auto };
+  return auto;
+}
+
+/**
+ * 固定区域的自动封面：没有生效的用户封面或仓库图片时，取区域内的一张照片（PRD 2.2）。
+ * 取哪一张由《界面显示规范》规定；规范出来之前暂取最早上传的一张，新增照片时封面不会跳动。
+ * 一次遍历算出全部区域，返回 Map(区域编号 → 照片 id)；一级区域取其下属全部照片中最早的一张。
+ */
+export function autoRegionCovers(album, regions) {
+  const best = new Map();
+  const consider = (rid, p) => {
+    const cur = best.get(rid);
+    if (!cur || (p.uploadedAt || 0) < (cur.uploadedAt || 0)) best.set(rid, p);
+  };
+  for (const p of Object.values(album.photos)) {
+    const rid = regionOfNode(album, p.box);
+    const r = rid && regions.byId.get(rid);
+    if (!r) continue;
+    consider(rid, p);
+    if (r.parent) consider(r.parent, p);
+  }
+  return new Map([...best].map(([rid, p]) => [rid, p.id]));
+}
+
+/**
+ * 区域网格的显示顺序（PRD 2.3）：已点亮的在前，按点亮日期从新到旧，同一天后点亮的在前；
+ * 未点亮的在后，保持映射文件中的原有顺序。只改变显示顺序，不改动映射数据。
+ * @param {string[]} ids 映射顺序的区域编号
+ * @param {{isLit: (id) => boolean, date: (id) => string|null, at: (id) => number}} f
+ */
+export function orderRegions(ids, { isLit, date, at }) {
+  const lit = [];
+  const unlit = [];
+  ids.forEach((id, i) => (isLit(id) && date(id) ? lit : unlit).push({ id, i }));
+  lit.sort((a, b) => {
+    const da = date(a.id);
+    const db = date(b.id);
+    if (da !== db) return da < db ? 1 : -1;
+    return at(b.id) - at(a.id) || a.i - b.i;
+  });
+  return [...lit, ...unlit].map((x) => x.id);
 }
 
 /** 某个区域/框之下的全部照片 id（用于选封面） */

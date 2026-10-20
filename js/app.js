@@ -157,6 +157,20 @@ const app = {
     const r = this.litView.regionLit[id];
     return (r && r.at) || 0;
   },
+  /** 区域网格的显示顺序：已点亮的在前（按点亮日期新到旧），未点亮的在后（映射顺序） */
+  orderRegions(ids) {
+    return A.orderRegions(ids, {
+      isLit: (id) => this.lit.has(id),
+      date: (id) => this.litDate(id),
+      // 有二级区域的一级区域：取它的日期（下属最早日期）那一天里，下属区域最晚的点亮时刻
+      at: (id) => {
+        const r = this.regions.byId.get(id);
+        if (!r || !r.children.length) return this.litAt(id);
+        const d = this.litDate(id);
+        return Math.max(0, ...r.children.filter((c) => this.lit.has(c) && this.litDate(c) === d).map((c) => this.litAt(c)));
+      },
+    });
+  },
   imageUrl(key) {
     return this.store.urlFor(key);
   },
@@ -563,6 +577,7 @@ function mainView() {
   // 点亮日期的显示视图：旧数据还没有记录日期时按规则补算（只用于显示，不写回；下次修改时才正式记录）
   app.litView = { ...album, regionLit: { ...album.regionLit } };
   A.syncLitTimes(app.litView, app.regions, app.store.now());
+  app.autoCovers = A.autoRegionCovers(album, app.regions);
   let page;
   const { kind, id } = app.route;
   if (kind === 'map') page = mapView(app, id);
@@ -794,7 +809,6 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
       sub2 ? h('div', { class: 'tile-sub tile-date' }, sub2) : null
     ),
     badge ? h('span', { class: 'tile-badge' }, badge) : null,
-    lit ? h('span', { class: 'lit-mark', title: '已点亮' }, '已点亮') : null,
     extra || null
   );
 }
@@ -802,7 +816,7 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
 function regionTile(id, { href, onclick } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
-  const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id]);
+  const bg = A.resolveRegionBackground(album, app.regions, id, REGION_DISPLAY[id], app.autoCovers.get(id));
   let sub = '';
   if (r.children.length) {
     const litKids = r.children.filter((c) => app.lit.has(c)).length;
@@ -836,7 +850,7 @@ function homeView() {
       // 首页入口用回时间线（用户 2026-10-18 决定）；旅行树代码保留，#/tree 仍可直接打开，首页不放入口
       h('a', { class: 'entry-btn', href: '#/timeline' }, h('span', { class: 'entry-icon', 'aria-hidden': 'true' }, '🕒'), '时间线')
     ),
-    h('div', { class: 'grid' }, app.regions.level1.map((id) => regionTile(id)))
+    h('div', { class: 'grid' }, app.orderRegions(app.regions.level1).map((id) => regionTile(id)))
   );
 }
 
@@ -853,7 +867,7 @@ function level1View(id) {
       h('p', { class: 'sub' }, `已点亮 ${litKids}/${r.children.length} 个二级区域`),
       regionCoverTools(id)
     ),
-    h('div', { class: 'grid' }, r.children.map((c) => regionTile(c)))
+    h('div', { class: 'grid' }, app.orderRegions(r.children).map((c) => regionTile(c)))
   );
 }
 
@@ -1181,11 +1195,21 @@ function contentView(node, { photosOnly = false } = {}) {
       );
     }
   } else {
-    wrap.appendChild(h('p', { class: 'muted' }, editing ? '单批最多 50 张，上传前会自动压缩；首版不支持视频。' : '暂无照片'));
+    // 上传说明只在上传面板里显示，不在页面上常驻（PRD 4.1）
+    wrap.appendChild(h('p', { class: 'muted' }, '暂无照片'));
   }
   if (photosOnly) return wrap;
 
-  // 备注（可以有多条，逐条添加、修改、删除）
+  // 只读时，没有备注 / 地点的栏目整栏不显示（PRD 3.2）；编辑时照常显示，方便添加
+  if (editing || node.notes.length) wrap.appendChild(notesSection(node));
+  if (editing || node.locations.length) wrap.appendChild(locationsSection(node));
+  return wrap;
+}
+
+// 备注（可以有多条，逐条添加、修改、删除）
+function notesSection(node) {
+  const editing = app.editing;
+  const wrap = h('div', { class: 'content-section' });
   wrap.appendChild(
     h(
       'div',
@@ -1252,8 +1276,13 @@ function contentView(node, { photosOnly = false } = {}) {
       )
     );
   } else wrap.appendChild(h('p', { class: 'muted' }, '暂无备注'));
+  return wrap;
+}
 
-  // 地点（可以有多个，逐个添加、修改、删除）
+// 地点（可以有多个，逐个添加、修改、删除）
+function locationsSection(node) {
+  const editing = app.editing;
+  const wrap = h('div', { class: 'content-section' });
   wrap.appendChild(
     h(
       'div',
