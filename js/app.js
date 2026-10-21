@@ -363,7 +363,7 @@ async function startEditing(btn) {
     if (!r.ok) {
       app.lock = await app.session.lockStatus();
       app.render();
-      return alertDialog(`${r.holder} 正在编辑，你当前只能查看。对方结束编辑，或超过 2 分钟无响应后，可以再试。`, { title: '编辑权已被占用' });
+      return alertDialog(`${r.holder} 正在编辑，你当前只能查看。对方结束编辑，或超过 5 分钟无响应后，可以再试。`, { title: '编辑权已被占用' });
     }
     app.lock = { state: 'mine' };
     if (app.sync.dirty) {

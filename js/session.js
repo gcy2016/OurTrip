@@ -12,7 +12,8 @@ export const REGISTRY_KEY = 'meta/devices.json';
 const REGISTRY_REFRESH = 7 * 86400000;
 const REGISTRY_EXPIRE = 30 * 86400000;
 export const MAX_ONLINE = 2;
-export const LOCK_TTL = 120000;
+// 编辑权 5 分钟未续约才失效：切到手机相册找照片时网页会暂停续约，回来不必重新取得编辑权（用户 2026-10-21）
+export const LOCK_TTL = 300000;
 export const LOCK_RENEW_EVERY = 30000;
 export const PRESENCE_TTL = 75000;
 export const HEARTBEAT_EVERY = 25000;
