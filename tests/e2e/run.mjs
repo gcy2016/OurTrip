@@ -211,8 +211,8 @@ try {
     assert.equal(await A.textContent('.grid .tile:nth-child(2) .tile-title'), 'A01');
     assert.equal(await A.locator('.grid .tile.has-photo').count(), 0);
     assert.equal(await A.locator('.tile :text-is("已点亮")').count(), 0);
-    // 方框文字：点亮的“已点亮 X/Y”和日期；没点亮的（有无二级区域都一样）只写“未点亮”
-    assert.match(await A.textContent('.grid .tile:first-child .tile-text'), /已点亮 1\/11.*点亮/);
+    // 方框文字只有一行：点亮的写日期（不写“已点亮 X/Y”）；没点亮的（有无二级区域都一样）写“未点亮”
+    assert.match(await A.textContent('.grid .tile:first-child .tile-text'), /^A03\d{4}\.\d{2}\.\d{2} 点亮$/);
     assert.equal(await A.textContent('.grid .tile:nth-child(2) .tile-text'), 'A01未点亮');
     assert.equal(await A.textContent('.grid .tile:nth-child(3) .tile-text'), 'A02未点亮');
     assert.equal(await A.locator('.grid .tile:not(.lit) .tile-sub:not(:text-is("未点亮"))').count(), 0);

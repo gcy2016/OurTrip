@@ -837,9 +837,8 @@ function regionTile(id, { href, onclick } = {}) {
   const album = app.sync.album;
   const bg = A.resolveRegionBackground(album, app.regions, id);
   const lit = app.lit.has(id);
-  // 没点亮的统一写“未点亮”；点亮的有二级区域时写“已点亮 X/Y”，再加点亮日期
-  let sub = '未点亮';
-  if (lit) sub = r.children.length ? `已点亮 ${r.children.filter((c) => app.lit.has(c)).length}/${r.children.length}` : '';
+  // 方框上只写一行：没点亮写“未点亮”，点亮写点亮日期（不再写“已点亮 X/Y”，各方框文字行数一致）
+  const sub = lit ? '' : '未点亮';
   const date = lit ? app.litDate(id) : null;
   return tile({
     href: href || `#/r/${id}`,
