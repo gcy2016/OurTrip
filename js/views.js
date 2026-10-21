@@ -216,18 +216,23 @@ function drawMap(app, data) {
   const lh = vw * 0.04;
   const bigRight = big.length ? Math.max(...big.map((b) => b.x + b.w)) : right - vw * 0.25;
   const labelX = bigRight + gap;
+  // 标注或小框放不下时，向右、向下扩大画布，而不是把它们挤小或挤到一起
+  let extRight = vx + vw;
+  let extBottom = vy + vh;
 
   if (islands.length) {
     // 南海诸岛小框：港澳标注右侧到地图右边界之间的海面上，不占用大陆的显示空间
     const ib = pathBBox(islands.join(' '));
     const left = labelX + (dots.length ? labelW + gap : 0);
     const top = big.length ? Math.min(...big.map((b) => b.y)) : bottom - vh * 0.3;
-    const fw = right - left;
+    const insetRight = Math.max(right, left + vw * 0.14); // 小框至少占画面宽度的 14%，名称看得清
+    extRight = Math.max(extRight, insetRight + pad);
+    const fw = insetRight - left;
     const fh = bottom - top;
     const k = Math.min((fw * 0.86) / ib.w, (fh * 0.8) / ib.h);
     const fwUsed = (ib.w * k) / 0.86;
     const fhUsed = (ib.h * k) / 0.8;
-    const fx = right - fwUsed;
+    const fx = insetRight - fwUsed;
     const fy = bottom - fhUsed;
     const lit = app.lit.has(islandsOf);
     const inset = svg('g', { class: `inset${lit ? ' lit' : ''}${selected === islandsOf ? ' sel' : ''}`, 'data-id': islandsOf, tabindex: 0, role: 'button', 'aria-label': '南海诸岛' });
@@ -250,13 +255,14 @@ function drawMap(app, data) {
         return { id, cx: b.x + b.w / 2, cy: b.y + b.h / 2 };
       })
       .sort((a, b) => a.cy - b.cy);
-    const maxY = vy + vh - lh;
+    const limitY = vy + vh * 1.5;
     let lastY = -Infinity;
     for (const pt of pts) {
+      // 标注之间保持间距，不再被画布下边界压到一起（放不下时画布向下扩大）
       let y = Math.max(pt.cy - lh / 2, lastY + lh * 1.3);
-      while (y < maxY && big.some((b) => segmentHitsBox(pt.cx, pt.cy, labelX, y + lh / 2, b, gap * 0.3))) y += lh * 0.25;
-      y = Math.min(y, maxY);
+      while (y < limitY && big.some((b) => segmentHitsBox(pt.cx, pt.cy, labelX, y + lh / 2, b, gap * 0.3))) y += lh * 0.25;
       lastY = y;
+      extBottom = Math.max(extBottom, y + lh + pad);
       const lit = app.lit.has(pt.id);
       const mg = svg('g', { class: `marker${lit ? ' lit' : ''}${selected === pt.id ? ' sel' : ''}`, 'data-id': pt.id, tabindex: 0, role: 'button', 'aria-label': app.regionName(pt.id) });
       mg.appendChild(svg('line', { x1: pt.cx, y1: pt.cy, x2: labelX, y2: y + lh / 2 }));
@@ -267,6 +273,7 @@ function drawMap(app, data) {
       root.appendChild(mg);
     }
   }
+  root.setAttribute('viewBox', `${vx} ${vy} ${extRight - vx} ${extBottom - vy}`);
   return { root, dots };
 }
 

@@ -4,14 +4,8 @@
    主色只用作点缀：实色用于主按钮，其余用主色的淡色（tint）。
    ========================================================================= */
 
-/* 区域名称字体：马善政毛笔体（本地 woff2，用户 2026-10-16 选定） */
-@font-face {
-  font-family: 'MaShanZheng';
-  src: url('MaShanZheng-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* 区域名称与标题字体：马善政毛笔体（用户 2026-10-16 选定）。按需分包加载，定义在 css/brush-font.css，
+   由 tools/font/split_brush_font.py 生成：地名与标题用字先下载，其他字用到时才下载。 */
 
 :root {
   color-scheme: light;
