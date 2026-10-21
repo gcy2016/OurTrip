@@ -565,9 +565,6 @@ textarea.input {
 }
 
 /* 有照片时：白字压在底部渐隐条上 */
-/* 未点亮省份的代表照片（img.grey）：用户 2026-10-21 试用后改为彩色显示，不再变灰；
-   点亮与未点亮靠点亮方框的蓝色描边与光晕区分（见 .tile.lit）。要恢复灰白，在这里加 filter: grayscale(1)。 */
-
 .tile.has-photo {
   border-color: transparent;
   color: #fff;

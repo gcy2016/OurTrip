@@ -1,7 +1,7 @@
 // 旅行相册主程序：登录、在线人数、编辑权、页面路由与渲染。
 
 import { CONFIG } from './config.js';
-import { REGION_DISPLAY, COLORS, provincePhoto } from './region-display.js';
+import { REGION_DISPLAY, COLORS } from './region-display.js';
 import { buildRegions, isRegionId, isContentRegion } from './regions.js';
 import * as A from './album.js';
 import { encryptSecret, decryptSecret, decryptWithKey, blobFingerprint } from './crypto.js';
@@ -596,7 +596,6 @@ function mainView() {
   // 点亮日期的显示视图：旧数据还没有记录日期时按规则补算（只用于显示，不写回；下次修改时才正式记录）
   app.litView = { ...album, regionLit: { ...album.regionLit } };
   A.syncLitTimes(app.litView, app.regions, app.store.now());
-  app.autoCovers = A.autoRegionCovers(album, app.regions);
   let page;
   const { kind, id } = app.route;
   if (kind === 'map') page = mapView(app, id);
@@ -756,7 +755,6 @@ function backgroundImage(spec) {
   const load = (s) => {
     if (!s) return giveUp();
     img.onerror = () => load(s.fallback);
-    img.classList.toggle('grey', !!s.grey); // 未点亮省份的代表照片显示为灰白色
     if (s.kind === 'image') {
       img.onload = null;
       img.src = s.src;
@@ -837,17 +835,12 @@ function tile({ href, title, sub, sub2, color, bg: bgSpec, lit, badge, extra, on
 function regionTile(id, { href, onclick } = {}) {
   const r = app.regions.byId.get(id);
   const album = app.sync.album;
-  const bg = A.resolveRegionBackground(album, app.regions, id, {
-    provinceImage: r.level === 1 ? provincePhoto(app.regionName(id)) : null,
-    autoPhoto: app.autoCovers.get(id),
-    lit: app.lit.has(id),
-  });
-  let sub = '';
-  if (r.children.length) {
-    const litKids = r.children.filter((c) => app.lit.has(c)).length;
-    sub = `已点亮 ${litKids}/${r.children.length}`;
-  }
-  const date = app.lit.has(id) ? app.litDate(id) : null;
+  const bg = A.resolveRegionBackground(album, app.regions, id);
+  const lit = app.lit.has(id);
+  // 没点亮的统一写“未点亮”；点亮的有二级区域时写“已点亮 X/Y”，再加点亮日期
+  let sub = '未点亮';
+  if (lit) sub = r.children.length ? `已点亮 ${r.children.filter((c) => app.lit.has(c)).length}/${r.children.length}` : '';
+  const date = lit ? app.litDate(id) : null;
   return tile({
     href: href || `#/r/${id}`,
     title: app.regionName(id),

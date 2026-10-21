@@ -565,43 +565,12 @@ export function resolveCover(album, regions, targetId) {
 }
 
 /**
- * 固定区域的背景（PRD 2.2），返回 null 时由页面显示纯色：
- * - 一级区域（省级）：用户设置的封面 > 省级代表照片（未点亮时 grey: true，显示为灰白色；点亮后为彩色）；
- *   不自动取区域内的照片。用户封面加载失败时显示代表照片。
- * - 二级区域：用户设置的封面 > 自动取区域内的一张照片 > 纯色；没有代表照片。
- * @param {{ provinceImage?: string|null, autoPhoto?: string|null, lit?: boolean }} opts
+ * 固定区域的背景（PRD 2.2，用户 2026-10-21 决定）：用户设置的封面；没有设置（或照片已删除、移走）时返回 null，
+ * 由页面显示纯色。不自动取区域内的照片，也没有代表照片。
  */
-export function resolveRegionBackground(album, regions, regionId, { provinceImage = null, autoPhoto = null, lit = false } = {}) {
-  const r = regions.byId.get(regionId);
-  if (!r) return null;
+export function resolveRegionBackground(album, regions, regionId) {
   const photo = resolveCover(album, regions, regionId);
-  const fallback =
-    r.level === 1
-      ? provinceImage
-        ? { kind: 'image', src: provinceImage, grey: !lit }
-        : null
-      : autoPhoto
-        ? { kind: 'photo', photoId: autoPhoto }
-        : null;
-  if (photo) return { kind: 'photo', photoId: photo, fallback };
-  return fallback;
-}
-
-/**
- * 二级区域的自动封面：用户没有设置封面时，取区域内的一张照片（PRD 2.2；省级区域不自动取）。
- * 取哪一张由《界面显示规范》规定；规范出来之前暂取最早上传的一张，新增照片时封面不会跳动。
- * 一次遍历算出全部二级区域，返回 Map(区域编号 → 照片 id)。
- */
-export function autoRegionCovers(album, regions) {
-  const best = new Map();
-  for (const p of Object.values(album.photos)) {
-    const rid = regionOfNode(album, p.box);
-    const r = rid && regions.byId.get(rid);
-    if (!r || r.level !== 2) continue;
-    const cur = best.get(rid);
-    if (!cur || (p.uploadedAt || 0) < (cur.uploadedAt || 0)) best.set(rid, p);
-  }
-  return new Map([...best].map(([rid, p]) => [rid, p.id]));
+  return photo ? { kind: 'photo', photoId: photo } : null;
 }
 
 /**

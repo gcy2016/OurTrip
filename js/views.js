@@ -47,8 +47,8 @@ function regionInfo(app, sel) {
   const lit = app.lit.has(sel);
   const date = lit ? app.litDate(sel) : null;
   const r = app.regions.byId.get(sel);
-  // 有二级区域的一级区域：显示下属点亮计数（与首页方框一致）
-  const kids = r && r.level === 1 && r.children.length ? r.children : null;
+  // 已点亮且有二级区域的一级区域：显示下属点亮计数（与首页方框一致）；未点亮的只写“未点亮”
+  const kids = lit && r && r.level === 1 && r.children.length ? r.children : null;
   // 已点亮、有二级区域且已上传二级地图的省份：可以展开二级地图
   const canOpen = lit && kids && l2Index.has(sel);
   return h(
