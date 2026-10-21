@@ -1577,6 +1577,13 @@ textarea.input {
   margin: 0;
 }
 
+/* 点击区域后提示框里的地名：毛笔字 */
+.map-info p strong {
+  font-family: 'MaShanZheng', 'Kaiti SC', 'STKaiti', 'KaiTi', '楷体', serif;
+  font-size: 20px;
+  font-weight: 400;
+}
+
 .map-info .lit strong {
   color: var(--primary-strong);
 }

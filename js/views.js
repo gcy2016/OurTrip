@@ -211,8 +211,9 @@ function drawMap(app, data) {
   const gap = vw * 0.02;
   const right = box.x + box.w;
   const bottom = box.y + box.h;
-  const labelW = vw * 0.07;
-  const lh = vw * 0.028;
+  // 港澳标注：比原来放大约 1.4 倍，手机竖屏时也看得清、点得到（用户 2026-10-21）
+  const labelW = vw * 0.095;
+  const lh = vw * 0.04;
   const bigRight = big.length ? Math.max(...big.map((b) => b.x + b.w)) : right - vw * 0.25;
   const labelX = bigRight + gap;
 
