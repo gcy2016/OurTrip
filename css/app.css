@@ -565,11 +565,8 @@ textarea.input {
 }
 
 /* 有照片时：白字压在底部渐隐条上 */
-/* 未点亮省份的代表照片：灰白、淡一些；点亮后恢复彩色（PRD 2.2） */
-.tile-bg img.grey {
-  filter: grayscale(1);
-  opacity: 0.55;
-}
+/* 未点亮省份的代表照片（img.grey）：用户 2026-10-21 试用后改为彩色显示，不再变灰；
+   点亮与未点亮靠点亮方框的蓝色描边与光晕区分（见 .tile.lit）。要恢复灰白，在这里加 filter: grayscale(1)。 */
 
 .tile.has-photo {
   border-color: transparent;
@@ -625,7 +622,7 @@ textarea.input {
 
 .tile.lit {
   border-color: transparent;
-  box-shadow: 0 0 0 2px var(--lit), var(--shadow-card);
+  box-shadow: 0 0 0 2px var(--lit), 0 0 18px 2px rgba(47, 124, 246, 0.45), var(--shadow-card);
 }
 
 .tile-badge {

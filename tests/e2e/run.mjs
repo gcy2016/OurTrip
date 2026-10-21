@@ -224,7 +224,7 @@ try {
       { name: '河南', lit: true, grey: false, src: 'images/provinces/河南.jpg' },
       { name: '吉林省', lit: false, grey: true, src: 'images/provinces/吉林.jpg' },
     ]);
-    assert.equal(await A.$eval('.grid .tile.has-photo img.grey', (e) => getComputedStyle(e).filter), 'grayscale(1)');
+    assert.equal(await A.$eval('.grid .tile.has-photo img.grey', (e) => getComputedStyle(e).filter), 'none'); // 用户决定：未点亮也显示彩色
     await A.waitForFunction(() => [...document.querySelectorAll('.grid .tile.has-photo img')].every((i) => i.complete && i.naturalWidth > 0));
     await A.screenshot({ path: join(SHOTS, 'home-province-photos.png') });
     await A.evaluate(() => {
