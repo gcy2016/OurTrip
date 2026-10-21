@@ -906,6 +906,11 @@ try {
     assert.ok(compressed >= 1); // 测试数据里 2023 年与 2026 年之间有一段长空白
     assert.equal(await A.locator('.tl-gap').count(), compressed);
     assert.ok(cards[0].top < 60); // 打开页面直接看到最新的
+    // 页头：已点亮 X/333 个二级区域（只数二级区域）
+    const l2Lit = await A.evaluate(() => [...window.__app.regions.byId.values()].filter((r) => r.level === 2 && window.__app.lit.has(r.id)).length);
+    assert.equal(await A.textContent('.page-head .sub'), `已点亮 ${l2Lit}/333 个二级区域`);
+    // 卡片和首页点亮方框一样有蓝色描边与光晕；引线不会斜着穿进卡片中部
+    assert.match(await A.$eval('.tl-card .tile', (e) => getComputedStyle(e).boxShadow), /rgba\(47, 124, 246, 0\.45\)/);
     assert.match(await A.textContent('.tl-card[data-id="A03-C01"] .tile-date'), /2023\.05\.01 点亮/);
     await A.screenshot({ path: join(SHOTS, 'timeline.png'), fullPage: true });
     await A.setViewportSize({ width: 375, height: 812 });

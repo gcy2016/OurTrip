@@ -496,7 +496,9 @@ export function timelineView(app) {
     .map((id) => ({ id, date: app.litDate(id), at: app.litAt(id) }))
     .filter((x) => x.date)
     .sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : b.at - a.at || (a.id < b.id ? -1 : 1)));
-  const head = h('div', { class: 'page-head' }, h('h1', null, '时间线'), h('p', { class: 'sub' }, items.length ? `${items.length} 个区域 · 最近 ${dotted(items[0].date)}` : ''));
+  // 页头：已点亮的二级区域数 / 333（只数二级区域；无二级区域的一级区域虽有分支，不计入，用户 2026-10-21）
+  const l2 = [...app.regions.byId.values()].filter((r) => r.level === 2);
+  const head = h('div', { class: 'page-head' }, h('h1', null, '时间线'), h('p', { class: 'sub' }, `已点亮 ${l2.filter((r) => app.lit.has(r.id)).length}/${l2.length} 个二级区域`));
   if (!items.length) return h('section', null, head, h('div', { class: 'empty' }, '还没有点亮的区域。'));
 
   const width = Math.min(document.documentElement.clientWidth || 360, 1200) - 40;
@@ -518,11 +520,10 @@ export function timelineView(app) {
 
   for (const it of laid) {
     const left = it.side === 0;
-    const cardMid = it.cardY + cardW / 2;
     box.appendChild(h('div', { class: 'tl-dot', style: { top: `${it.y}px` } }));
-    // 引线：从轴上的日期点连到卡片
+    // 引线：从轴上的日期点连到卡片最近的一点——日期点在卡片高度范围内时是水平线，否则连到卡片的上角或下角
     const x1 = 0;
-    const dy = cardMid - it.y;
+    const dy = Math.min(Math.max(it.y, it.cardY + 12), it.cardY + cardW - 12) - it.y;
     const len = Math.hypot(22, dy);
     const ang = (Math.atan2(dy, left ? -22 : 22) * 180) / Math.PI;
     box.appendChild(h('div', { class: 'tl-link', style: { top: `${it.y}px`, left: `calc(50% + ${x1}px)`, width: `${len}px`, transform: `rotate(${ang}deg)` } }));
