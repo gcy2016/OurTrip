@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>首页三个方向</title>
+<!-- 界面方向初稿（只用于挑选，不是正式页面）。照片位置用渐变色块代替，省份、日期为示意。 -->
+<style>
+@import url('../css/brush-font.css');
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: #d9dde2;
+  font-family: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+.brush { font-family: 'MaShanZheng', 'Kaiti SC', 'STKaiti', serif; font-weight: 400; line-height: 1; }
+a { text-decoration: none; color: inherit; }
+button { font: inherit; }
+
+/* 顶部切换 */
+.switch {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; gap: 6px; padding: 10px 12px;
+  background: #20242a; color: #fff;
+}
+.switch button {
+  flex: 1; min-height: 44px; border: 0; border-radius: 10px;
+  background: rgba(255,255,255,.12); color: #fff; font-size: 15px;
+}
+.switch button[aria-pressed="true"] { background: #fff; color: #20242a; font-weight: 600; }
+.note { margin: 0; padding: 8px 14px; font-size: 13px; color: #3c434c; background: #eceff2; }
+
+.boards { display: block; }
+.phone { width: 100%; min-height: 100vh; }
+@media (min-width: 1100px) {
+  .boards { display: flex; gap: 32px; justify-content: center; align-items: flex-start; }
+  .switch { display: none; }
+  .boards { padding: 32px; }
+  .phone { width: 390px; min-height: auto; border-radius: 20px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.18); }
+  .phone[hidden] { display: block !important; }
+  .label { display: block !important; }
+}
+.label { display: none; text-align: center; font-weight: 600; margin: 0 0 10px; color: #20242a; }
+.col { display: flex; flex-direction: column; }
+
+/* 通用 */
+.top { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.top .brush { font-size: 30px; }
+.icon-btn { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px; background: transparent; color: inherit; }
+.photo { position: relative; display: block; overflow: hidden; color: #fff; border-radius: 14px; }
+.photo::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, rgba(14,18,24,.62), rgba(14,18,24,0) 55%); }
+.photo .txt { position: absolute; left: 14px; right: 14px; bottom: 12px; z-index: 1; display: flex; flex-direction: column; gap: 4px; }
+.photo .meta { font-size: 12px; opacity: .95; }
+h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+h2 span { font-weight: 400; }
+
+/* 方向 A · 印记 */
+.A { background: #f4f5f2; color: #20242a; padding: 0 16px 40px; }
+.A .stat { display: flex; align-items: baseline; gap: 8px; padding: 8px 0 20px; }
+.A .stat .brush { font-size: 64px; color: #b8322a; }
+.A .stat span:last-child { font-size: 15px; color: #5d6470; }
+.A .entries { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 28px; }
+.A .entries a { height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #d9dcd5; border-radius: 14px; background: #fff; font-size: 16px; font-weight: 600; }
+.A h2 span { color: #5d6470; }
+.A .lit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 32px; }
+.A .lit .photo { aspect-ratio: 4 / 5; box-shadow: 0 6px 18px rgba(32,36,42,.12); }
+.A .lit .name { font-size: 40px; }
+.A .seal { position: absolute; top: 10px; right: 10px; z-index: 1; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 6px; background: #b8322a; color: #fff; font-size: 22px; transform: rotate(-6deg); }
+.A .unlit { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.A .unlit a { height: 56px; display: flex; align-items: center; justify-content: center; border: 1px solid #dfe2db; border-radius: 14px; background: #fff; color: #6b717b; font-size: 20px; }
+
+/* 方向 B · 照片墙 */
+.B { background: #fff; color: #15202b; padding: 0 16px 40px; }
+.B .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 20px; }
+.B .bar p { margin: 0; font-size: 15px; color: #56616b; }
+.B .bar strong { font-size: 20px; color: #15202b; }
+.B .bar div { display: flex; gap: 8px; }
+.B .bar a { height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 6px; border-radius: 22px; background: rgba(15,111,120,.08); color: #0f6f78; font-size: 15px; font-weight: 600; }
+.B .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.B .grid .photo { aspect-ratio: 1 / 1; box-shadow: 0 6px 18px rgba(21,32,43,.14); }
+.B .grid .name { font-size: 36px; }
+.B .empty { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; border: 1.5px dashed #c6ced3; border-radius: 14px; background: #f5f7f8; color: #646e77; font-size: 30px; }
+
+/* 方向 C · 足迹册 */
+.C { background: #eef2f6; color: #1b2433; padding: 0 0 40px; }
+.C .top { padding: 0 16px; }
+.C .hero { margin: 4px 16px 24px; padding: 20px; border-radius: 14px; background: #fff; box-shadow: 0 6px 18px rgba(27,36,51,.08); display: flex; flex-direction: column; gap: 14px; }
+.C .hero .line { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.C .hero .big { font-size: 34px; }
+.C .hero .num { font-size: 52px; color: #34558b; }
+.C .hero .of { font-size: 15px; color: #56606e; }
+.C .progress { height: 8px; border-radius: 4px; background: #e2e8ef; overflow: hidden; }
+.C .progress div { width: 17.6%; height: 8px; border-radius: 4px; background: #34558b; }
+.C .hero .entries { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.C .hero .entries a { height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; background: rgba(52,85,139,.08); color: #34558b; font-size: 15px; font-weight: 600; }
+.C h2 { margin: 0 16px 12px; }
+.C h2 span { color: #56606e; }
+.C .strip { display: flex; gap: 12px; overflow-x: auto; padding: 0 16px 16px; scroll-snap-type: x mandatory; }
+.C .strip .photo { flex: 0 0 240px; height: 320px; scroll-snap-align: start; box-shadow: 0 6px 18px rgba(27,36,51,.16); }
+.C .strip .name { font-size: 48px; }
+.C .strip .meta { font-size: 13px; }
+.C .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px; }
+.C .chips a { min-height: 44px; padding: 0 14px; display: flex; align-items: center; border-radius: 14px; background: #fff; color: #5c6573; font-size: 20px; }
+</style>
+</head>
+<body>
+<div class="switch" role="group" aria-label="切换方向">
+  <button type="button" data-show="A" aria-pressed="true">A 印记</button>
+  <button type="button" data-show="B" aria-pressed="false">B 照片墙</button>
+  <button type="button" data-show="C" aria-pressed="false">C 足迹册</button>
+</div>
+<p class="note">照片位置用色块代替（拿不到真实照片），省份和日期是示意。</p>
+
+<div class="boards">
+  <!-- 方向 A -->
+  <div class="col">
+    <p class="label">方向 A · 印记（靠大小区分）</p>
+    <main class="phone A" id="A">
+      <div class="top">
+        <span class="brush">旅行相册</span>
+        <button class="icon-btn" aria-label="菜单（含开始编辑）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </div>
+      <div class="stat"><span class="brush">6</span><span>/ 34 个一级区域已点亮</span></div>
+      <nav class="entries">
+        <a href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>地图</a>
+        <a href="#"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18"/><circle cx="12" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M14 7h5M5 16h5"/></svg>时间线</a>
+      </nav>
+      <h2>去过的 <span>6 个</span></h2>
+      <div class="lit" data-list="lit-A"></div>
+      <h2>还没去的 <span>28 个</span></h2>
+      <div class="unlit" data-list="unlit-A"></div>
+    </main>
+  </div>
+
+  <!-- 方向 B -->
+  <div class="col">
+    <p class="label">方向 B · 照片墙（不改大小，靠明暗区分）</p>
+    <main class="phone B" id="B" hidden>
+      <div class="top">
+        <span class="brush">旅行相册</span>
+        <button class="icon-btn" aria-label="菜单（含开始编辑）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </div>
+      <div class="bar">
+        <p>已点亮 <strong>6</strong> / 34</p>
+        <div>
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>地图</a>
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18"/><circle cx="12" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M14 7h5M5 16h5"/></svg>时间线</a>
+        </div>
+      </div>
+      <div class="grid" data-list="all-B"></div>
+    </main>
+  </div>
+
+  <!-- 方向 C -->
+  <div class="col">
+    <p class="label">方向 C · 足迹册（去过的单独一块）</p>
+    <main class="phone C" id="C" hidden>
+      <div class="top">
+        <span class="brush">旅行相册</span>
+        <button class="icon-btn" aria-label="菜单（含开始编辑）"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      </div>
+      <section class="hero">
+        <div class="line"><span class="brush big">我们走过</span><span class="brush num">6</span><span class="of">/ 34 个一级区域</span></div>
+        <div class="progress" role="img" aria-label="已点亮 6/34"><div></div></div>
+        <div class="entries">
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg>地图</a>
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3v18"/><circle cx="12" cy="7" r="2"/><circle cx="12" cy="16" r="2"/><path d="M14 7h5M5 16h5"/></svg>时间线</a>
+        </div>
+      </section>
+      <h2>去过的地方 <span>左右滑动查看</span></h2>
+      <div class="strip" data-list="lit-C"></div>
+      <h2 style="margin-top: 16px;">还没去的 <span>28 个</span></h2>
+      <div class="chips" data-list="unlit-C"></div>
+    </main>
+  </div>
+</div>
+
+<script>
+// 示意数据：照片用渐变色块代替
+const LIT = [
+  ['云南', '2026.05.02', '3/16', 'linear-gradient(160deg,#7fb2d9 0%,#a9cfe3 38%,#6f9a5b 62%,#3f6a3a 100%)'],
+  ['四川', '2025.10.03', '2/21', 'linear-gradient(165deg,#c9d3cf 0%,#8fa79a 40%,#4f6f5c 75%,#33493b 100%)'],
+  ['浙江', '2025.04.05', '1/11', 'linear-gradient(170deg,#d7e3e2 0%,#9fc3c0 45%,#5d8f8c 75%,#3b5f5d 100%)'],
+  ['北京', '2024.10.01', '', 'linear-gradient(170deg,#8fb4d8 0%,#c8d7e3 40%,#a8453a 62%,#6e2a24 100%)'],
+  ['河南', '2024.05.01', '2/17', 'linear-gradient(165deg,#e5d3b1 0%,#c9a46a 45%,#8a6a3d 80%,#5c4628 100%)'],
+  ['海南', '2023.02.10', '1/4', 'linear-gradient(170deg,#9fd3e8 0%,#5fb4cf 40%,#2f8fa8 70%,#e6d7b0 100%)'],
+];
+const UNLIT = ['天津','河北','山西','内蒙古','辽宁','吉林','黑龙江','上海','江苏','安徽','福建','江西','山东','湖北','湖南','广东','广西','重庆','贵州','西藏','陕西','甘肃','青海','宁夏','新疆','香港','澳门','台湾'];
+
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; };
+const meta = (d, c, sep) => `${d} 点亮${c ? `${sep}已点亮 ${c}` : ''}`;
+const fill = (name, items) => { const box = document.querySelector(`[data-list="${name}"]`); items.forEach((x) => box.appendChild(el(x))); };
+
+fill('lit-A', LIT.map(([n, d, c, bg]) => `<a href="#" class="photo" style="background:${bg}"><span class="seal brush">到</span><span class="txt"><span class="brush name">${n}</span><span class="meta">${meta(d, c, ' · ')}</span></span></a>`));
+fill('unlit-A', UNLIT.map((n) => `<a href="#" class="brush">${n}</a>`));
+fill('all-B', [
+  ...LIT.map(([n, d, c, bg]) => `<a href="#" class="photo" style="background:${bg}"><span class="txt"><span class="brush name">${n}</span><span class="meta">${d} 点亮</span>${c ? `<span class="meta">已点亮 ${c}</span>` : ''}</span></a>`),
+  ...UNLIT.map((n) => `<a href="#" class="empty brush">${n}</a>`),
+]);
+fill('lit-C', LIT.map(([n, d, c, bg]) => `<a href="#" class="photo" style="background:${bg}"><span class="txt"><span class="brush name">${n}</span><span class="meta">${meta(d, c, ' · ')}</span></span></a>`));
+fill('unlit-C', UNLIT.map((n) => `<a href="#" class="brush">${n}</a>`));
+
+// 手机上一次看一个方向
+document.querySelectorAll('.switch button').forEach((b) => b.addEventListener('click', () => {
+  document.querySelectorAll('.switch button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  ['A', 'B', 'C'].forEach((k) => { document.getElementById(k).hidden = k !== b.dataset.show; });
+  window.scrollTo(0, 0);
+}));
+</script>
+</body>
+</html>

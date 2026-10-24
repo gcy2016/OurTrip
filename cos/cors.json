@@ -1,0 +1,11 @@
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://gcy2016.github.io"],
+      "AllowedMethods": ["GET", "PUT", "POST", "HEAD", "DELETE"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag", "Date", "Content-Length", "x-cos-request-id", "x-cos-version-id"],
+      "MaxAgeSeconds": 600
+    }
+  ]
+}

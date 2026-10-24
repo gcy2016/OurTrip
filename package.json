@@ -1,0 +1,11 @@
+{
+  "name": "travel-album",
+  "private": true,
+  "type": "module",
+  "description": "双人旅行相册（GitHub Pages + 腾讯云 COS）。网页本身无需构建，本文件仅用于本地测试。",
+  "scripts": {
+    "test": "node --test tests/unit/*.test.mjs",
+    "e2e": "node tests/e2e/run.mjs",
+    "serve": "python3 -m http.server 8080"
+  }
+}
