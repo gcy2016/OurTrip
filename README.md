@@ -1,3 +1,6 @@
+> **2026-10-28 起，旅行相册搬进了 [`gcy2016/muse-letters`](https://github.com/gcy2016/muse-letters) 仓库的 `album/` 目录**（git subtree，原提交记录一起保留）。新地址：https://gcy2016.github.io/muse-letters/album/ 。
+> 本仓库只留跳转页：打开旧地址（首页、`tools/admin.html`、`tools/encrypt.html`）会自动跳到新地址。**以后改相册请在 muse-letters 的 `album/` 里改，不要再改这里**，下面的说明以 `album/README.md` 为准。
+
 # 旅行相册
 
 两人共用的网页版旅行相册：网页放在 GitHub Pages，照片和相册数据放在私有的腾讯云 COS 存储桶里。依据 `gcy2016/AI_Corp` issue #8《旅行相册 PRD 2.0》、#13《PRD 补充版》及其后的用户决定实现。
